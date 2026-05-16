@@ -1,22 +1,22 @@
 <div align="center">
 
-<h1>LESSViT: Scalable Architecture for Hyperspectral Geospatial Modeling</h1>
+<h1>LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift</h1>
 
-[![NeurIPS 2026](https://img.shields.io/badge/NeurIPS-2026-blue)](https://neurips.cc)
 [![arXiv](https://img.shields.io/badge/arXiv-2503.12843-red?logo=arxiv)](https://arxiv.org/abs/2503.12843)
+[![Project Page](https://img.shields.io/badge/Project-Page-blue)](https://uiuctml.github.io/LESSViT/)
+[![GitHub](https://img.shields.io/badge/GitHub-LESSViT-green?logo=github)](https://github.com/uiuctml/LESSViT)
 
 </div>
 
-This is the official repository for the NeurIPS 2026 paper
-"_LESSViT: Scalable Architecture for Hyperspectral Geospatial Modeling_".
+This is the official repository for the paper
+"_LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift_".
 
 Authors:
 [Haozhe Si](https://ehzoahis.github.io/),
 Yuxuan Wan,
+Yuqing Wang,
 [Minh Do](https://minhdo.ece.illinois.edu/),
-[Deepak Vasisht](https://deepakv.web.illinois.edu/),
-[Han Zhao](https://hanzhaoml.github.io/),
-Hendrik F. Hamann.
+[Han Zhao](https://hanzhaoml.github.io/).
 
 ## Overview
 
@@ -24,7 +24,7 @@ Hendrik F. Hamann.
 <img src="./assets/less_vit.png" alt="LESSViT Architecture" width="500"/>
 </div>
 
-Modeling hyperspectral imagery (HSI) across sensors is challenging due to variations in wavelength coverage, band sampling, and channel dimensionality. We introduce **LESSViT** (**L**ow-rank **E**fficient **S**patial–**S**pectral **Vi**sion **T**ransformer), a sensor-flexible architecture for cross-spectral generalization.
+Modeling hyperspectral imagery (HSI) across different sensors presents a fundamental challenge due to variations in wavelength coverage, band sampling, and channel dimensionality. We introduce **LESSViT** (**L**ow-rank **E**fficient **S**patial–**S**pectral **Vi**sion **T**ransformer), a sensor-flexible architecture for cross-spectral generalization.
 
 Our contributions are:
 
@@ -54,7 +54,7 @@ We evaluate LESSViT under a cross-spectral generalization setting on the Spectra
 | `ood_complement` | Unseen wavelengths (C82, disjoint from training) |
 | `ood_full` | Channel expansion (C202, all channels) |
 
-Downstream datasets: `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`.
+Downstream datasets: `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
 
 To launch fine-tuning on a SpectralEarth dataset:
 ```shell
@@ -68,24 +68,8 @@ python3 GeospatialFM/finetune/finetune.py \
     --output_dir ${OUTPUT_DIR}
 ```
 
-- `--dataset_name`: One of `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`.
+- `--dataset_name`: One of `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
 - `--gen_task`: One of `id`, `ood_a`, `ood_complement`, `ood_full`.
-
-## Fine-tuning on GFM-Bench
-
-LESSViT also supports fine-tuning on the GFM-Bench datasets (BigEarthNet, DFC2020, EuroSAT, So2Sat, MARIDA, SegMunich, LandSat). Use the sweep launcher for hyperparameter search:
-
-```shell
-python3 sweep_finetune.py \
-    --dataset ${DATASET_NAME} \
-    --root_dir ${ROOT_DIR} \
-    --modal ${MODAL}
-```
-
-For linear probing, add `--lp`.
-
-- `--dataset`: One of `bigearthnet`, `dfc2020`, `segmunich`, `eurosat`, `so2sat`, `marida`, `landsat`.
-- `--modal`: `optical`, `radar`, or `multi`.
 
 See [`GeospatialFM/finetune/args.py`](GeospatialFM/finetune/args.py) for full argument descriptions.
 
@@ -97,11 +81,11 @@ Pre-trained model checkpoints will be released soon. Stay tuned!
 
 If you find our work helpful, please cite our paper:
 ```bibtex
-@inproceedings{si2026lessvit,
-  title     = {{LESSVIT}: Scalable Architecture for Hyperspectral Geospatial Modeling},
-  author    = {Haozhe Si and Yuxuan Wan and Minh Do and Deepak Vasisht and Han Zhao and Hendrik F. Hamann},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2026},
+@article{si2025lessvit,
+  title   = {LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift},
+  author  = {Si, Haozhe and Wan, Yuxuan and Wang, Yuqing and Do, Minh and Zhao, Han},
+  journal = {arXiv preprint arXiv:2503.12843},
+  year    = {2025},
 }
 ```
 

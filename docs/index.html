@@ -569,17 +569,16 @@
           <tr>
             <th class="left">Dataset</th>
             <th>Region</th>
-            <th>Classes</th>
             <th>Task Type</th>
             <th>Metric</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td class="left"><strong>CDL</strong></td><td>USA</td><td>12</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
-          <tr><td class="left"><strong>EuroCrops</strong></td><td>Europe</td><td>—</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
-          <tr><td class="left"><strong>CORINE</strong></td><td>Europe</td><td>19</td><td>Land Cover Classification</td><td>mAP ↑</td></tr>
-          <tr><td class="left"><strong>BDFORET</strong></td><td>France</td><td>—</td><td>Forest Type Segmentation</td><td>mIoU ↑</td></tr>
-          <tr><td class="left"><strong>BNETD</strong></td><td>Côte d'Ivoire</td><td>—</td><td>Land Cover Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>CDL</strong></td><td>USA</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>EuroCrops</strong></td><td>Europe</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>CORINE</strong></td><td>Europe</td><td>Land Cover Classification</td><td>mAP ↑</td></tr>
+          <tr><td class="left"><strong>BDFORET</strong></td><td>France</td><td>Forest Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>BNETD</strong></td><td>Côte d'Ivoire</td><td>Land Cover Segmentation</td><td>mIoU ↑</td></tr>
         </tbody>
       </table>
     </div>
@@ -604,12 +603,18 @@
             <th colspan="4">CDL (mIoU ↑)</th>
             <th colspan="4">EuroCrops (mIoU ↑)</th>
             <th colspan="4">CORINE (mAP ↑)</th>
+            <th colspan="4">BDFORET (mIoU ↑)</th>
+            <th colspan="4">BNETD (mIoU ↑)</th>
+            <th colspan="3">Avg. Rel. Drop (%) ↓</th>
           </tr>
           <tr>
             <th class="left"></th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
           </tr>
         </thead>
         <tbody>
@@ -627,6 +632,15 @@
             <td>35.82 <small class="degen">↓55%</small></td>
             <td>38.23 <small class="degen">↓52%</small></td>
             <td>38.40 <small class="degen">↓52%</small></td>
+            <td class="best">76.28</td>
+            <td>48.25 <small class="degen">↓37%</small></td>
+            <td>48.43 <small class="degen">↓36%</small></td>
+            <td>48.57 <small class="degen">↓36%</small></td>
+            <td class="best">43.54</td>
+            <td>14.54 <small class="degen">↓67%</small></td>
+            <td>16.92 <small class="degen">↓61%</small></td>
+            <td>18.76 <small class="degen">↓57%</small></td>
+            <td>57</td><td>56</td><td>54</td>
           </tr>
           <tr>
             <td class="left">HyperSigma</td>
@@ -642,6 +656,15 @@
             <td>40.00 <small class="degen">↓42%</small></td>
             <td>25.78 <small class="degen">↓62%</small></td>
             <td>48.50 <small class="degen">↓29%</small></td>
+            <td>64.23</td>
+            <td>49.59 <small class="degen">↓23%</small></td>
+            <td>48.69 <small class="degen">↓24%</small></td>
+            <td>49.52 <small class="degen">↓23%</small></td>
+            <td>25.80</td>
+            <td>17.54 <small class="degen">↓32%</small></td>
+            <td>16.37 <small class="degen">↓37%</small></td>
+            <td>18.93 <small class="degen">↓27%</small></td>
+            <td>33</td><td>38</td><td>30</td>
           </tr>
           <tr>
             <td class="left">DOFA</td>
@@ -657,6 +680,15 @@
             <td>36.87 <small class="degen">↓32%</small></td>
             <td>48.33 <small class="degen">↓11%</small></td>
             <td>33.51 <small class="degen">↓38%</small></td>
+            <td>57.60</td>
+            <td>52.26 <small class="degen">↓9%</small></td>
+            <td>33.84 <small class="degen">↓41%</small></td>
+            <td>50.11 <small class="degen">↓13%</small></td>
+            <td>25.20</td>
+            <td>18.08 <small class="degen">↓28%</small></td>
+            <td>18.36 <small class="degen">↓27%</small></td>
+            <td>18.88 <small class="degen">↓25%</small></td>
+            <td>29</td><td>36</td><td>36</td>
           </tr>
           <tr class="highlight-row">
             <td class="left"><strong>LESSViT <span class="ours-badge">ours</span></strong></td>
@@ -672,66 +704,6 @@
             <td class="best">67.87 <small class="degen">↓10%</small></td>
             <td class="best">58.92 <small class="degen">↓22%</small></td>
             <td class="best">75.54 <small class="degen">↓0%</small></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="table-scroll" style="margin-top:20px;">
-      <table>
-        <thead>
-          <tr>
-            <th class="left">Model</th>
-            <th colspan="4">BDFORET (mIoU ↑)</th>
-            <th colspan="4">BNETD (mIoU ↑)</th>
-            <th colspan="3">Avg. Rel. Drop (%) ↓</th>
-          </tr>
-          <tr>
-            <th class="left"></th>
-            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
-            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
-            <th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="left">SpectralViT</td>
-            <td class="best">76.28</td>
-            <td>48.25 <small class="degen">↓37%</small></td>
-            <td>48.43 <small class="degen">↓36%</small></td>
-            <td>48.57 <small class="degen">↓36%</small></td>
-            <td class="best">43.54</td>
-            <td>14.54 <small class="degen">↓67%</small></td>
-            <td>16.92 <small class="degen">↓61%</small></td>
-            <td>18.76 <small class="degen">↓57%</small></td>
-            <td>57</td><td>56</td><td>54</td>
-          </tr>
-          <tr>
-            <td class="left">HyperSigma</td>
-            <td>64.23</td>
-            <td>49.59 <small class="degen">↓23%</small></td>
-            <td>48.69 <small class="degen">↓24%</small></td>
-            <td>49.52 <small class="degen">↓23%</small></td>
-            <td>25.80</td>
-            <td>17.54 <small class="degen">↓32%</small></td>
-            <td>16.37 <small class="degen">↓37%</small></td>
-            <td>18.93 <small class="degen">↓27%</small></td>
-            <td>33</td><td>38</td><td>30</td>
-          </tr>
-          <tr>
-            <td class="left">DOFA</td>
-            <td>57.60</td>
-            <td>52.26 <small class="degen">↓9%</small></td>
-            <td>33.84 <small class="degen">↓41%</small></td>
-            <td>50.11 <small class="degen">↓13%</small></td>
-            <td>25.20</td>
-            <td>18.08 <small class="degen">↓28%</small></td>
-            <td>18.36 <small class="degen">↓27%</small></td>
-            <td>18.88 <small class="degen">↓25%</small></td>
-            <td>29</td><td>36</td><td>36</td>
-          </tr>
-          <tr class="highlight-row">
-            <td class="left"><strong>LESSViT <span class="ours-badge">ours</span></strong></td>
             <td>62.79</td>
             <td class="best">58.81 <small class="degen">↓6%</small></td>
             <td class="best">54.00 <small class="degen">↓14%</small></td>
@@ -755,14 +727,18 @@
         <thead>
           <tr>
             <th class="left">Config.</th>
-            <th>Pos. Emb.</th>
+            <th>PE</th>
             <th>r<sub>HCS</sub></th>
             <th colspan="4">CDL (mIoU ↑)</th>
+            <th colspan="4">EuroCrops (mIoU ↑)</th>
             <th colspan="4">CORINE (mAP ↑)</th>
-            <th colspan="4">Avg. Seg. (mIoU ↑)</th>
+            <th colspan="4">BDFORET (mIoU ↑)</th>
+            <th colspan="4">BNETD (mIoU ↑)</th>
           </tr>
           <tr>
             <th class="left"></th><th></th><th></th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
             <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
@@ -773,22 +749,28 @@
             <td class="left"><strong>Default</strong></td>
             <td>SSRoPE</td><td>[0.2, 0.3]</td>
             <td class="best">40.04</td><td class="best">41.22</td><td class="best">35.60</td><td class="best">40.50</td>
-            <td>70.74</td><td>68.30</td><td class="best">67.11</td><td>69.61</td>
-            <td class="best">44.48</td><td class="best">42.66</td><td class="best">39.96</td><td class="best">43.63</td>
+            <td class="best">52.52</td><td class="best">46.94</td><td class="best">47.49</td><td class="best">49.78</td>
+            <td class="best">70.74</td><td>68.30</td><td class="best">67.11</td><td>69.61</td>
+            <td>57.30</td><td class="best">58.22</td><td class="best">54.39</td><td>58.11</td>
+            <td>28.04</td><td class="best">24.24</td><td class="best">22.37</td><td class="best">26.14</td>
           </tr>
           <tr>
             <td class="left">w/o SSRoPE</td>
             <td>SIREN</td><td>[0.2, 0.3]</td>
             <td>28.79</td><td>29.60</td><td>30.58</td><td>29.82</td>
+            <td>50.45</td><td>45.77</td><td>46.01</td><td>47.27</td>
             <td>70.32</td><td class="best">69.48</td><td>64.68</td><td class="best">69.89</td>
-            <td>40.04</td><td>37.76</td><td>37.84</td><td>38.65</td>
+            <td>55.51</td><td>54.14</td><td>53.89</td><td>54.41</td>
+            <td>25.41</td><td>21.51</td><td>20.89</td><td>23.08</td>
           </tr>
           <tr>
             <td class="left">High r<sub>HCS</sub></td>
             <td>SSRoPE</td><td>[0.4, 0.5]</td>
             <td>40.93</td><td>40.87</td><td>35.88</td><td>39.13</td>
+            <td>52.06</td><td>51.54</td><td>48.70</td><td>51.37</td>
             <td>69.68</td><td>69.04</td><td>64.61</td><td>69.83</td>
-            <td>45.44</td><td>44.09</td><td>40.70</td><td>43.95</td>
+            <td class="best">59.81</td><td>58.19</td><td>54.45</td><td class="best">58.85</td>
+            <td class="best">28.95</td><td>25.77</td><td>23.76</td><td>26.44</td>
           </tr>
         </tbody>
       </table>
@@ -808,7 +790,7 @@
     <p>Qualitative comparison of LESSViT and SpectralViT under all four spectral configurations. In the in-distribution setting, SpectralViT produces more detailed segmentation maps due to its smaller patch size. Under cross-spectral generalization, SpectralViT exhibits large coherent misclassifications especially under spectral shift and channel expansion, while LESSViT maintains more stable predictions across all configurations.</p>
 
     <div class="fig-wrap">
-      <img src="assets/vis.png" alt="Qualitative segmentation results under cross-spectral generalization" />
+      <img src="assets/full_vis.png" alt="Qualitative segmentation results under cross-spectral generalization" />
       <p class="fig-caption"><strong>Figure:</strong> Qualitative segmentation results. PRGB denotes pseudo-RGB visualization of hyperspectral inputs; GT denotes ground-truth segmentation masks. Background pixels are masked out in predicted maps for clarity.</p>
     </div>
   </div>
