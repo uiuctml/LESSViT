@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LESSViT</title>
-  <meta name="description" content="LESSViT: Scalable Architecture for Hyperspectral Geospatial Modeling (NeurIPS 2026)" />
+  <meta name="description" content="LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet" />
@@ -143,14 +143,17 @@
       margin-bottom: 6px;
     }
     .author-block { display: inline-block; margin: 0 2px; }
-    .publication-authors a { color: hsl(204, 86%, 40%); font-weight: 500; }
+    .publication-authors a {
+      color: hsl(204, 86%, 40%);
+      font-weight: 500;
+    }
     .publication-authors a:hover { text-decoration: underline; }
     .publication-venue {
       font-size: 14px; color: var(--muted);
       margin-bottom: 28px;
     }
 
-    /* ── Pub link buttons ── */
+    /* ── Pub link buttons (GeospatialFM style) ── */
     .publication-links { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
     .link-block a {
       display: inline-flex; align-items: center; gap: 6px;
@@ -165,6 +168,16 @@
     .link-block a:hover { background: #222; transform: translateY(-1px); text-decoration: none; }
     .link-block a .icon { font-size: 15px; line-height: 1; display: flex; align-items: center; }
     .link-block a .icon img { height: 18px; width: auto; vertical-align: middle; }
+    /* ── Legacy btn (used in citation section) ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 20px; border-radius: 9999px;
+      font-size: 13.5px; font-weight: 600;
+      transition: background .15s, transform .1s;
+      border: none; cursor: pointer; background: #363636; color: #fff;
+    }
+    .btn:hover { background: #222; transform: translateY(-1px); text-decoration: none; }
+    .btn svg { width: 16px; height: 16px; fill: currentColor; flex-shrink: 0; }
 
     /* ── Sections ── */
     main { padding: 0; }
@@ -211,40 +224,31 @@
       margin-top: 1px;
     }
 
-    /* ── Method cards ── */
-    .method-grid {
+    /* ── Stats grid ── */
+    .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 16px; margin: 24px 0;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 14px; margin-bottom: 32px;
     }
-    .method-card {
+    .stat-card {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px 18px;
+      padding: 20px 14px;
+      text-align: center;
       box-shadow: var(--shadow);
     }
-    .method-card-head {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 10px;
+    .stat-num {
+      font-size: 26px; font-weight: 700;
+      color: var(--accent); line-height: 1; margin-bottom: 6px;
     }
-    .method-icon {
-      width: 34px; height: 34px; border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 17px; flex-shrink: 0;
-    }
-    .method-title { font-size: 14.5px; font-weight: 600; color: #1a1a2e; }
-    .method-body  { font-size: 13.5px; color: var(--muted); line-height: 1.65; }
-    .complexity-badge {
-      display: inline-block; font-family: 'Source Code Pro', monospace;
-      font-size: 12px; font-weight: 500;
-      background: #1e1e2e; color: #cdd6f4;
-      border-radius: 6px; padding: 2px 8px;
-      margin: 4px 0;
-    }
+    .stat-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
 
     /* ── Figures ── */
-    .fig-wrap { margin: 28px 0; text-align: center; }
+    .fig-wrap {
+      margin: 28px 0;
+      text-align: center;
+    }
     .fig-wrap img {
       max-width: 100%;
       border-radius: var(--radius);
@@ -258,18 +262,46 @@
       max-width: 720px; margin-left: auto; margin-right: auto;
     }
     .fig-caption strong { color: var(--text); }
+
     .fig-grid-2 {
-      display: grid; grid-template-columns: 1fr 1fr;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 20px; margin: 20px 0;
     }
-    @media (max-width: 700px) { .fig-grid-2 { grid-template-columns: 1fr; } }
+    .fig-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin: 20px 0;
+    }
+    @media (max-width: 700px) {
+      .fig-grid-2 { grid-template-columns: 1fr; }
+      .fig-grid-4 { grid-template-columns: 1fr 1fr; }
+    }
 
-    /* ── Spectral config badges ── */
-    .cfg { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 100px; }
-    .cfg-id   { background: #dbeafe; color: #1e40af; }
-    .cfg-sw   { background: #fce7f3; color: #9d174d; }
-    .cfg-c82  { background: #ffedd5; color: #9a3412; }
-    .cfg-full { background: #d1fae5; color: #065f46; }
+    /* ── Pipeline steps ── */
+    .pipeline-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin: 24px 0;
+    }
+    .step-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      box-shadow: var(--shadow);
+    }
+    .step-head {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 8px;
+    }
+    .step-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .step-title { font-size: 14px; font-weight: 600; }
+    .step-body  { font-size: 13.5px; color: var(--muted); line-height: 1.6; }
 
     /* ── Tables ── */
     .table-scroll { overflow-x: auto; margin: 16px 0; border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -290,25 +322,32 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #f8f9ff; }
     .best { font-weight: 700; color: var(--accent); }
-    .degen { color: #b91c1c; font-style: italic; font-size: 12.5px; }
+    .degen { color: #b91c1c; font-style: italic; }
     .sep-row td { background: var(--surface2); font-weight: 600; font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; border-top: 2px solid var(--border); }
     .highlight-row td { background: #eff6ff; }
+
+    /* ── Dataset comparison badge ── */
     .ours-badge {
-      display: inline-block; background: var(--accent); color: #fff;
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
       font-size: 10px; font-weight: 700;
       padding: 1px 7px; border-radius: 100px;
       vertical-align: middle; margin-left: 5px;
     }
+    .check   { color: var(--green); font-weight: 700; }
+    .cross   { color: #9ca3af; }
 
-    /* ── Sub-label ── */
-    .sub-label {
+    /* ── Task badge ── */
+    .task-badge {
       display: inline-block;
-      font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-      color: var(--accent); background: var(--accent-light);
-      border: 1px solid var(--accent-border);
-      border-radius: 100px; padding: 3px 12px;
-      margin-bottom: 10px;
+      font-size: 11px; font-weight: 600;
+      padding: 2px 9px; border-radius: 100px;
     }
+    .badge-static  { background: #dbeafe; color: #1e40af; }
+    .badge-sh      { background: #d1fae5; color: #065f46; }
+    .badge-lh      { background: #fce7f3; color: #9d174d; }
+    .badge-warn    { background: #ffedd5; color: #9a3412; }
 
     /* ── Citation ── */
     .citation-box {
@@ -320,6 +359,16 @@
       overflow-x: auto; white-space: pre;
     }
 
+    /* ── Section divider ── */
+    .sub-label {
+      display: inline-block;
+      font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--accent); background: var(--accent-light);
+      border: 1px solid var(--accent-border);
+      border-radius: 100px; padding: 3px 12px;
+      margin-bottom: 10px;
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid var(--border);
@@ -329,7 +378,8 @@
     }
 
     @media (max-width: 600px) {
-      .method-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2,1fr); }
+      .pipeline-steps { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -359,26 +409,24 @@
 <!-- ══════════════ HERO ══════════════ -->
 <header class="hero">
   <div class="container">
-    <div class="hero-tag">NeurIPS 2026</div>
     <h1 class="publication-title">
       <span class="title-name">LESSViT:</span>
-      Scalable Architecture for<br />Hyperspectral Geospatial Modeling
+      Robust Hyperspectral Representation Learning<br />
+      under Spectral Configuration Shift
     </h1>
 
     <div class="publication-authors">
       <span class="author-block"><a href="https://ehzoahis.github.io/">Haozhe Si</a><sup>1</sup>,</span>
       <span class="author-block">Yuxuan Wan<sup>2</sup>,</span>
+      <span class="author-block">Yuqing Wang<sup>2</sup>,</span>
       <span class="author-block"><a href="https://minhdo.ece.illinois.edu/">Minh Do</a><sup>1</sup>,</span>
-      <span class="author-block"><a href="https://deepakv.web.illinois.edu/">Deepak Vasisht</a><sup>2</sup>,</span>
-      <span class="author-block"><a href="https://hanzhaoml.github.io/">Han Zhao</a><sup>2</sup>,</span>
-      <span class="author-block">Hendrik F. Hamann<sup>3</sup></span>
+      <span class="author-block"><a href="https://hanzhaoml.github.io/">Han Zhao</a><sup>2</sup></span>
     </div>
-    <div class="publication-authors" style="font-size:14px;">
+    <div class="publication-authors">
       <span class="author-block"><sup>1</sup>Dept. of Electrical and Computer Engineering,</span>
-      <span class="author-block"><sup>2</sup>Siebel School of Computing and Data Science,</span>
-      <span class="author-block"><sup>3</sup>IBM Research</span>
+      <span class="author-block"><sup>2</sup>Siebel School of Computing and Data Science</span>
     </div>
-    <p class="publication-venue">University of Illinois Urbana-Champaign &ensp;&middot;&ensp; IBM Research</p>
+    <p class="publication-venue">University of Illinois Urbana-Champaign</p>
 
     <div class="publication-links">
       <span class="link-block">
@@ -405,19 +453,19 @@
   <div class="container">
     <h2>Abstract</h2>
     <div class="abstract-box">
-      Modeling hyperspectral imagery (HSI) across different sensors presents a fundamental challenge due to variations in wavelength coverage, band sampling, and channel dimensionality. As a result, models trained under a fixed spectral configuration often fail to generalize to other sensors. Existing Vision Transformer (ViT) approaches either rely on implicit spectral modeling with fixed channel assumptions or adopt explicit spatial–spectral attention with prohibitive computational cost, leading to a fundamental trade-off between efficiency and expressiveness. In this work, we introduce <strong>Low-rank Efficient Spatial–Spectral ViT (LESSViT)</strong>, a sensor-flexible architecture for cross-spectral generalization. LESSViT is built on <strong>LESS Attention</strong>, a structured low-rank factorization that models joint spatial–spectral interactions through separable spatial and spectral components, reducing the complexity of full spatial–spectral attention from <em>O</em>(N²C²) to <em>O</em>(rNC). We further incorporate channel-agnostic patch embedding and wavelength-aware positional encoding (<strong>SSRoPE</strong>) to support flexible spectral inputs. To enable efficient and robust pretraining, we introduce <strong>HyperMAE</strong> with decoupled spatial–spectral masking and hierarchical channel sampling. Experiments on the SpectralEarth benchmark demonstrate that LESSViT improves robustness under spectral shifts while remaining competitive in-distribution.
+      Modeling hyperspectral imagery (HSI) across different sensors presents a fundamental challenge due to variations in wavelength coverage, band sampling, and channel dimensionality. As a result, models trained under a fixed spectral configuration often fail to generalize to other sensors. Existing Vision Transformer (ViT) approaches either rely on implicit spectral modeling with fixed channel assumptions or adopt explicit spatial–spectral attention with prohibitive computational cost, leading to a fundamental trade-off between efficiency and expressiveness. In this work, we introduce <strong>Low-rank Efficient Spatial–Spectral ViT (LESSViT)</strong>, a sensor-flexible architecture for cross-spectral generalization. LESSViT is built on <strong>LESS Attention</strong>, a structured low-rank factorization that models joint spatial–spectral interactions through separable spatial and spectral components, reducing the complexity of full spatial–spectral attention from O(N²C²) to O(rNC), where N is the number of spatial tokens, C is the number of spectral channels, and r is the rank of the low-rank approximation. We further incorporate channel-agnostic patch embedding and wavelength-aware positional encoding to support flexible spectral inputs. To enable efficient and robust pretraining, we introduce a hyperspectral masked autoencoder (<strong>HyperMAE</strong>) with decoupled spatial–spectral masking and hierarchical channel sampling. Experiments on the SpectralEarth benchmark demonstrate that LESSViT improves robustness under spectral shifts while remaining competitive in-distribution.
     </div>
 
-    <div class="fig-wrap" style="margin-top:32px;">
-      <img src="assets/header.png" alt="Overview of LESSViT for cross-spectral generalization" style="max-width:860px;" />
-      <p class="fig-caption"><strong>Figure:</strong> Overview of LESSViT. (1) Cross-spectral generalization: train on a fixed spectral configuration and evaluate across sensors with varying wavelength coverage. (2) HyperMAE pretraining with decoupled spatial–spectral masking and hierarchical channel sampling. (3) LESS Attention with SSRoPE for efficient spatial–spectral modeling.</p>
+    <div class="fig-wrap">
+      <img src="assets/header.png" alt="Overview of LESSViT for cross-spectral generalization" />
+      <p class="fig-caption"><strong>Figure:</strong> Overview of LESSViT. ①&nbsp;Cross-spectral generalization setting: train on a fixed spectral configuration and evaluate across sensors with varying wavelength coverage and channel configurations. ②&nbsp;HyperMAE pretraining with decoupled spatial–spectral masking and hierarchical channel sampling for scalable and robust learning. ③&nbsp;LESS Attention with SSRoPE for efficient spatial–spectral modeling.</p>
     </div>
 
     <h3>Key Contributions</h3>
     <ul class="contrib-list">
       <li>
         <span class="contrib-num">1</span>
-        <div><strong>LESS Attention</strong> — a structured low-rank factorization of spatial–spectral attention that reduces complexity from <em>O</em>(N²C²) to <em>O</em>(rNC), enabling explicit and scalable modeling of joint spatial–spectral dependencies.</div>
+        <div><strong>LESS Attention</strong> — a structured low-rank factorization of spatial–spectral attention that reduces complexity from O(N²C²) to O(rNC), enabling explicit and scalable joint spatial–spectral modeling across hundreds of hyperspectral channels.</div>
       </li>
       <li>
         <span class="contrib-num">2</span>
@@ -425,7 +473,7 @@
       </li>
       <li>
         <span class="contrib-num">3</span>
-        <div><strong>HyperMAE</strong> — a hyperspectral masked autoencoder pretraining framework with decoupled spatial–spectral masking and hierarchical channel sampling, making pretraining tractable under high channel dimensionality.</div>
+        <div><strong>HyperMAE</strong> — a hyperspectral masked autoencoder pretraining framework with decoupled spatial–spectral masking and hierarchical channel sampling, making pretraining tractable under high channel dimensionality and robust to spectral variation.</div>
       </li>
     </ul>
   </div>
@@ -436,57 +484,47 @@
   <div class="container">
     <h2>Method</h2>
 
-    <p>LESSViT integrates three key components to achieve scalable and flexible hyperspectral representation learning:</p>
+    <p>LESSViT satisfies three key requirements for cross-spectral generalization: channel-agnostic tokenization, explicit spatial–spectral modeling, and computational scalability. It integrates four tightly coupled components:</p>
 
-    <div class="method-grid">
-      <div class="method-card">
-        <div class="method-card-head">
-          <div class="method-icon" style="background:#dbeafe;">🪐</div>
-          <div class="method-title">Tied Patch Embedding</div>
+    <div class="pipeline-steps">
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-icon" style="background:#dbeafe;">🪐</div>
+          <div class="step-title">Tied Patch Embedding</div>
         </div>
-        <div class="method-body">
-          A shared linear projection applied independently per channel, producing a spatial–spectral token grid of size <em>(N+1)×(C+1)×D</em>. Spatial, spectral, and global <code>[CLS]</code> tokens enable structured aggregation across both dimensions.
-        </div>
+        <div class="step-body">A shared linear projection applied independently per channel converts a C×H×W hyperspectral image into a spatial–spectral token grid of shape (N+1)×(C+1)×D, with spatial, spectral, and global <code>[CLS]</code> tokens for structured aggregation.</div>
       </div>
-      <div class="method-card">
-        <div class="method-card-head">
-          <div class="method-icon" style="background:#ede9fe;">⚡</div>
-          <div class="method-title">LESS Attention</div>
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-icon" style="background:#ede9fe;">⚡</div>
+          <div class="step-title">LESS Attention</div>
         </div>
-        <div class="method-body">
-          Decomposes full spatial–spectral attention into separable spatial and spectral branches. Their Kronecker product captures joint interactions at rank <em>r</em>:<br/>
-          <span class="complexity-badge">O(N²C²) → O(rNC)</span><br/>
-          making attention tractable for hundreds of hyperspectral channels.
-        </div>
+        <div class="step-body">Decomposes joint spatial–spectral attention into separable spatial and spectral branches. Their Kronecker product captures joint interactions at rank r, reducing complexity from O(N²C²) to O(rNC) — making attention tractable for hundreds of spectral channels.</div>
       </div>
-      <div class="method-card">
-        <div class="method-card-head">
-          <div class="method-icon" style="background:#d1fae5;">🌐</div>
-          <div class="method-title">SSRoPE</div>
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-icon" style="background:#d1fae5;">🌐</div>
+          <div class="step-title">SSRoPE</div>
         </div>
-        <div class="method-body">
-          Spatial–Spectral Rotary Position Embedding applies 2D RoPE over spatial coordinates <em>(u, v)</em> and 1D RoPE over spectral wavelengths <em>λ</em>. This encodes continuous wavelength information, enabling generalization across varying channel configurations.
-        </div>
+        <div class="step-body">Spatial–Spectral Rotary Position Embedding applies 2D RoPE over spatial coordinates (u, v) and 1D RoPE over spectral wavelengths λ. This encodes physical wavelength information, enabling generalization across varying channel configurations without fixed index assumptions.</div>
       </div>
-      <div class="method-card">
-        <div class="method-card-head">
-          <div class="method-icon" style="background:#ffedd5;">🎭</div>
-          <div class="method-title">HyperMAE</div>
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-icon" style="background:#ffedd5;">🎭</div>
+          <div class="step-title">HyperMAE</div>
         </div>
-        <div class="method-body">
-          Decoupled masking independently masks 75% of spatial patches and 75% of spectral channels. Hierarchical channel sampling (HCS) randomly subsets channels per iteration, reducing reconstruction cost while maintaining diverse spectral exposure.
-        </div>
+        <div class="step-body">Decoupled masking independently masks 75% of spatial patches and 75% of spectral channels. Hierarchical channel sampling (HCS) randomly subsets channels per training iteration, reducing reconstruction cost while maintaining diverse spectral exposure.</div>
       </div>
     </div>
 
-    <div class="fig-grid-2" style="margin-top:32px; align-items:start;">
+    <div class="fig-grid-2">
       <div class="fig-wrap" style="margin:0;">
         <img src="assets/sstokens.png" alt="Spatial-Spectral Tokenization" />
-        <p class="fig-caption"><strong>(a)</strong> Tied patch embedding converts a hyperspectral image into a spatial–spectral token grid with spatial, spectral, and global <code>[CLS]</code> tokens.</p>
+        <p class="fig-caption"><strong>(a) Spatial-Spectral Tokenization.</strong> The tied patch embedding converts a hyperspectral image into a grid of spatial–spectral tokens with spatial, spectral, and global <code>[CLS]</code> tokens.</p>
       </div>
       <div class="fig-wrap" style="margin:0;">
         <img src="assets/less_vit_horizontal.png" alt="LESS Attention Block" />
-        <p class="fig-caption"><strong>(b)</strong> The LESS block decomposes attention into spatial and spectral branches via structured low-rank factorization, enabling efficient joint modeling.</p>
+        <p class="fig-caption"><strong>(b) LESS Attention Block.</strong> The LESS block factorizes spatial and spectral attention via structured decomposition, enabling efficient modeling of joint spatial–spectral interactions.</p>
       </div>
     </div>
   </div>
@@ -497,49 +535,51 @@
   <div class="container">
     <h2>Cross-Spectral Generalization Benchmark</h2>
 
-    <p>We evaluate LESSViT under a cross-spectral generalization setting on the <a href="https://github.com/blumenstiel/SpectralEarth" target="_blank">SpectralEarth</a> benchmark (EnMAP hyperspectral data, 202 channels). Models are pretrained and fine-tuned on a fixed channel configuration and evaluated under four settings that simulate cross-sensor variability:</p>
+    <p>We evaluate LESSViT on <a href="https://github.com/blumenstiel/SpectralEarth" target="_blank">SpectralEarth</a>, a large-scale hyperspectral pretraining dataset and evaluation benchmark built on EnMAP (202 channels, 30 m resolution). Models are pretrained and fine-tuned on a fixed channel set (C120<sub>VN+</sub>) and evaluated under four spectral configurations that emulate cross-sensor variability:</p>
 
-    <div style="display:flex; flex-wrap:wrap; gap:10px; margin:20px 0 28px;">
-      <div style="flex:1; min-width:200px; padding:14px 16px; background:var(--accent-light); border:1px solid var(--accent-border); border-radius:var(--radius);">
-        <span class="cfg cfg-id" style="margin-bottom:6px; display:inline-block;">In-Distribution (C120<sub>VN+</sub>)</span>
-        <p style="font-size:13px; margin:0; color:#374151;">120 channels, 80 VNIR + 40 SWIR. Training and in-distribution evaluation configuration.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin:16px 0 24px;">
+      <div style="flex:1; min-width:220px; padding:16px 18px; background:var(--accent-light); border:1px solid var(--accent-border); border-radius:var(--radius);">
+        <span class="task-badge badge-static" style="margin-bottom:8px; display:inline-block;">In-Distribution (C120<sub>VN+</sub>)</span>
+        <p style="font-size:13.5px; margin:0; color:#374151;">120 channels: 80 VNIR + 40 SWIR. Training and in-distribution evaluation configuration.</p>
       </div>
-      <div style="flex:1; min-width:200px; padding:14px 16px; background:#fdf2f8; border:1px solid #fbcfe8; border-radius:var(--radius);">
-        <span class="cfg cfg-sw" style="margin-bottom:6px; display:inline-block;">Spectral Shift (C120<sub>SW+</sub>)</span>
-        <p style="font-size:13px; margin:0; color:#374151;">120 channels, 40 VNIR + 80 SWIR. Same count, complementary spectral distribution.</p>
+      <div style="flex:1; min-width:220px; padding:16px 18px; background:#fdf2f8; border:1px solid #fbcfe8; border-radius:var(--radius);">
+        <span class="task-badge badge-lh" style="margin-bottom:8px; display:inline-block;">Spectral Shift (C120<sub>SW+</sub>)</span>
+        <p style="font-size:13.5px; margin:0; color:#374151;">120 channels: 40 VNIR + 80 SWIR. Same count as training, complementary spectral distribution.</p>
       </div>
-      <div style="flex:1; min-width:200px; padding:14px 16px; background:#fff7ed; border:1px solid #fed7aa; border-radius:var(--radius);">
-        <span class="cfg cfg-c82" style="margin-bottom:6px; display:inline-block;">Unseen Wavelengths (C82)</span>
-        <p style="font-size:13px; margin:0; color:#374151;">82 channels entirely disjoint from the training set — the most challenging OOD scenario.</p>
+      <div style="flex:1; min-width:220px; padding:16px 18px; background:#fff7ed; border:1px solid #fed7aa; border-radius:var(--radius);">
+        <span class="task-badge badge-warn" style="margin-bottom:8px; display:inline-block;">Unseen Wavelengths (C82)</span>
+        <p style="font-size:13.5px; margin:0; color:#374151;">82 channels entirely disjoint from training. The most challenging out-of-distribution scenario.</p>
       </div>
-      <div style="flex:1; min-width:200px; padding:14px 16px; background:var(--green-bg); border:1px solid #bbf7d0; border-radius:var(--radius);">
-        <span class="cfg cfg-full" style="margin-bottom:6px; display:inline-block;">Channel Expansion (C202)</span>
-        <p style="font-size:13px; margin:0; color:#374151;">All 202 channels. Tests generalization when additional bands beyond training are available.</p>
+      <div style="flex:1; min-width:220px; padding:16px 18px; background:var(--green-bg); border:1px solid #bbf7d0; border-radius:var(--radius);">
+        <span class="task-badge badge-sh" style="margin-bottom:8px; display:inline-block;">Channel Expansion (C202)</span>
+        <p style="font-size:13.5px; margin:0; color:#374151;">All 202 channels. Tests generalization when additional bands beyond the training set are available.</p>
       </div>
     </div>
 
     <div class="fig-wrap">
       <img src="assets/wavelength_dist.png" alt="Wavelength distributions of the four channel configurations" style="max-width:600px;" />
-      <p class="fig-caption"><strong>Figure:</strong> Wavelength distributions of the four channel configurations. C120<sub>VN+</sub> and C120<sub>SW+</sub> have identical channel counts but complementary spectral distributions. C82 is disjoint from C120<sub>VN+</sub>, and C202 includes all available channels.</p>
+      <p class="fig-caption"><strong>Figure:</strong> Wavelength distributions of the four channel configurations. C120<sub>VN+</sub> and C120<sub>SW+</sub> have identical channel counts but complementary spectral distributions (spectral shift). C82 is entirely disjoint from C120<sub>VN+</sub> (unseen wavelengths), and C202 includes all channels (channel expansion).</p>
     </div>
 
-    <p>Downstream datasets span segmentation and multi-label classification tasks across diverse land cover types:</p>
+    <h3>Downstream Datasets</h3>
+    <p>We evaluate on five geospatial labeling products covering segmentation and multi-label classification across diverse land cover types and geographic regions:</p>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
             <th class="left">Dataset</th>
             <th>Region</th>
-            <th>Task</th>
+            <th>Classes</th>
+            <th>Task Type</th>
             <th>Metric</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td class="left"><strong>CDL</strong></td><td>USA</td><td>Crop Type Segmentation</td><td>mIoU</td></tr>
-          <tr><td class="left"><strong>EuroCrops</strong></td><td>Europe</td><td>Crop Type Segmentation</td><td>mIoU</td></tr>
-          <tr><td class="left"><strong>CORINE</strong></td><td>Europe</td><td>Land Cover Classification</td><td>mAP</td></tr>
-          <tr><td class="left"><strong>BDFORET</strong></td><td>France</td><td>Forest Type Segmentation</td><td>mIoU</td></tr>
-          <tr><td class="left"><strong>BNETD</strong></td><td>Côte d'Ivoire</td><td>Land Cover Segmentation</td><td>mIoU</td></tr>
+          <tr><td class="left"><strong>CDL</strong></td><td>USA</td><td>12</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>EuroCrops</strong></td><td>Europe</td><td>—</td><td>Crop Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>CORINE</strong></td><td>Europe</td><td>19</td><td>Land Cover Classification</td><td>mAP ↑</td></tr>
+          <tr><td class="left"><strong>BDFORET</strong></td><td>France</td><td>—</td><td>Forest Type Segmentation</td><td>mIoU ↑</td></tr>
+          <tr><td class="left"><strong>BNETD</strong></td><td>Côte d'Ivoire</td><td>—</td><td>Land Cover Segmentation</td><td>mIoU ↑</td></tr>
         </tbody>
       </table>
     </div>
@@ -550,11 +590,11 @@
 <section id="results">
   <div class="container">
     <h2>Results</h2>
-    <p>We compare LESSViT against state-of-the-art methods pretrained on SpectralEarth: <strong>SpectralViT</strong> (re-trained on C120<sub>VN+</sub> for fair comparison), <strong>HyperSigma</strong>, and <strong>DOFA</strong>. Models are fine-tuned on C120<sub>VN+</sub> and evaluated across all four spectral configurations. <strong>Bold</strong> = best per column. Relative drops are computed as (ID − OOD)/ID.</p>
+    <p>We compare LESSViT against three state-of-the-art baselines: <strong>SpectralViT</strong> (re-trained on C120<sub>VN+</sub> for a fair comparison under the same protocol), <strong>HyperSigma</strong>, and <strong>DOFA</strong> (using released pretrained weights). All models are fine-tuned on C120<sub>VN+</sub> for 20 epochs and evaluated across the four spectral configurations without any adaptation. <strong>Bold</strong> = best per column. Relative drops (↓) are computed as (ID − OOD)/ID.</p>
 
-    <!-- Main results -->
     <div class="sub-label">Cross-Spectral Generalization</div>
-    <h3>Main Results</h3>
+    <h3>Segmentation &amp; Classification Results</h3>
+    <p>LESSViT achieves the best performance on 14 out of 15 task–configuration pairs and the lowest average relative drop across all OOD settings, demonstrating improved robustness under spectral variation. SpectralViT achieves stronger in-distribution performance, reflecting its specialization to the fixed spectral configuration.</p>
 
     <div class="table-scroll">
       <table>
@@ -567,80 +607,71 @@
           </tr>
           <tr>
             <th class="left"></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td class="left">SpectralViT</td>
             <td class="best">70.29</td>
-            <td>13.71 <span class="degen">↓80%</span></td>
-            <td>6.87 <span class="degen">↓90%</span></td>
-            <td>5.43 <span class="degen">↓92%</span></td>
+            <td>13.71 <small class="degen">↓80%</small></td>
+            <td>6.87 <small class="degen">↓90%</small></td>
+            <td>5.43 <small class="degen">↓92%</small></td>
             <td class="best">70.27</td>
-            <td>33.65 <span class="degen">↓48%</span></td>
-            <td>43.13 <span class="degen">↓39%</span></td>
-            <td>48.09 <span class="degen">↓32%</span></td>
+            <td>33.65 <small class="degen">↓48%</small></td>
+            <td>43.13 <small class="degen">↓39%</small></td>
+            <td>48.09 <small class="degen">↓32%</small></td>
             <td class="best">79.21</td>
-            <td>35.82 <span class="degen">↓55%</span></td>
-            <td>38.23 <span class="degen">↓52%</span></td>
-            <td>38.40 <span class="degen">↓52%</span></td>
+            <td>35.82 <small class="degen">↓55%</small></td>
+            <td>38.23 <small class="degen">↓52%</small></td>
+            <td>38.40 <small class="degen">↓52%</small></td>
           </tr>
           <tr>
             <td class="left">HyperSigma</td>
             <td>39.45</td>
-            <td>15.91 <span class="degen">↓60%</span></td>
-            <td>16.48 <span class="degen">↓58%</span></td>
-            <td>13.83 <span class="degen">↓65%</span></td>
+            <td>15.91 <small class="degen">↓60%</small></td>
+            <td>16.48 <small class="degen">↓58%</small></td>
+            <td>13.83 <small class="degen">↓65%</small></td>
             <td>56.07</td>
-            <td class="best">51.04 <span class="degen">↓9%</span></td>
-            <td>50.41 <span class="degen">↓10%</span></td>
-            <td>51.42 <span class="degen">↓8%</span></td>
+            <td class="best">51.04 <small class="degen">↓9%</small></td>
+            <td>50.41 <small class="degen">↓10%</small></td>
+            <td>51.42 <small class="degen">↓8%</small></td>
             <td>68.54</td>
-            <td>40.00 <span class="degen">↓42%</span></td>
-            <td>25.78 <span class="degen">↓62%</span></td>
-            <td>48.50 <span class="degen">↓29%</span></td>
+            <td>40.00 <small class="degen">↓42%</small></td>
+            <td>25.78 <small class="degen">↓62%</small></td>
+            <td>48.50 <small class="degen">↓29%</small></td>
           </tr>
           <tr>
             <td class="left">DOFA</td>
             <td>37.65</td>
-            <td>18.11 <span class="degen">↓52%</span></td>
-            <td>17.37 <span class="degen">↓54%</span></td>
-            <td>12.97 <span class="degen">↓66%</span></td>
+            <td>18.11 <small class="degen">↓52%</small></td>
+            <td>17.37 <small class="degen">↓54%</small></td>
+            <td>12.97 <small class="degen">↓66%</small></td>
             <td>54.61</td>
-            <td>42.20 <span class="degen">↓23%</span></td>
-            <td>29.57 <span class="degen">↓46%</span></td>
-            <td>34.64 <span class="degen">↓37%</span></td>
+            <td>42.20 <small class="degen">↓23%</small></td>
+            <td>29.57 <small class="degen">↓46%</small></td>
+            <td>34.64 <small class="degen">↓37%</small></td>
             <td>54.04</td>
-            <td>36.87 <span class="degen">↓32%</span></td>
-            <td>48.33 <span class="degen">↓11%</span></td>
-            <td>33.51 <span class="degen">↓38%</span></td>
+            <td>36.87 <small class="degen">↓32%</small></td>
+            <td>48.33 <small class="degen">↓11%</small></td>
+            <td>33.51 <small class="degen">↓38%</small></td>
           </tr>
           <tr class="highlight-row">
             <td class="left"><strong>LESSViT <span class="ours-badge">ours</span></strong></td>
             <td>51.78</td>
-            <td class="best">38.92 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓25%</span></td>
-            <td class="best">28.51 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓45%</span></td>
-            <td class="best">46.52 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓10%</span></td>
+            <td class="best">38.92 <small class="degen">↓25%</small></td>
+            <td class="best">28.51 <small class="degen">↓45%</small></td>
+            <td class="best">46.52 <small class="degen">↓10%</small></td>
             <td>56.86</td>
-            <td>46.55 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓18%</span></td>
-            <td class="best">51.34 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓10%</span></td>
-            <td class="best">54.89 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓3%</span></td>
+            <td>46.55 <small class="degen">↓18%</small></td>
+            <td class="best">51.34 <small class="degen">↓10%</small></td>
+            <td class="best">54.89 <small class="degen">↓3%</small></td>
             <td>75.55</td>
-            <td class="best">67.87 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓10%</span></td>
-            <td class="best">58.92 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓22%</span></td>
-            <td class="best">75.54 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓0%</span></td>
+            <td class="best">67.87 <small class="degen">↓10%</small></td>
+            <td class="best">58.92 <small class="degen">↓22%</small></td>
+            <td class="best">75.54 <small class="degen">↓0%</small></td>
           </tr>
         </tbody>
       </table>
@@ -657,76 +688,67 @@
           </tr>
           <tr>
             <th class="left"></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td class="left">SpectralViT</td>
             <td class="best">76.28</td>
-            <td>48.25 <span class="degen">↓37%</span></td>
-            <td>48.43 <span class="degen">↓36%</span></td>
-            <td>48.57 <span class="degen">↓36%</span></td>
+            <td>48.25 <small class="degen">↓37%</small></td>
+            <td>48.43 <small class="degen">↓36%</small></td>
+            <td>48.57 <small class="degen">↓36%</small></td>
             <td class="best">43.54</td>
-            <td>14.54 <span class="degen">↓67%</span></td>
-            <td>16.92 <span class="degen">↓61%</span></td>
-            <td>18.76 <span class="degen">↓57%</span></td>
+            <td>14.54 <small class="degen">↓67%</small></td>
+            <td>16.92 <small class="degen">↓61%</small></td>
+            <td>18.76 <small class="degen">↓57%</small></td>
             <td>57</td><td>56</td><td>54</td>
           </tr>
           <tr>
             <td class="left">HyperSigma</td>
             <td>64.23</td>
-            <td>49.59 <span class="degen">↓23%</span></td>
-            <td>48.69 <span class="degen">↓24%</span></td>
-            <td>49.52 <span class="degen">↓23%</span></td>
+            <td>49.59 <small class="degen">↓23%</small></td>
+            <td>48.69 <small class="degen">↓24%</small></td>
+            <td>49.52 <small class="degen">↓23%</small></td>
             <td>25.80</td>
-            <td>17.54 <span class="degen">↓32%</span></td>
-            <td>16.37 <span class="degen">↓37%</span></td>
-            <td>18.93 <span class="degen">↓27%</span></td>
+            <td>17.54 <small class="degen">↓32%</small></td>
+            <td>16.37 <small class="degen">↓37%</small></td>
+            <td>18.93 <small class="degen">↓27%</small></td>
             <td>33</td><td>38</td><td>30</td>
           </tr>
           <tr>
             <td class="left">DOFA</td>
             <td>57.60</td>
-            <td>52.26 <span class="degen">↓9%</span></td>
-            <td>33.84 <span class="degen">↓41%</span></td>
-            <td>50.11 <span class="degen">↓13%</span></td>
+            <td>52.26 <small class="degen">↓9%</small></td>
+            <td>33.84 <small class="degen">↓41%</small></td>
+            <td>50.11 <small class="degen">↓13%</small></td>
             <td>25.20</td>
-            <td>18.08 <span class="degen">↓28%</span></td>
-            <td>18.36 <span class="degen">↓27%</span></td>
-            <td>18.88 <span class="degen">↓25%</span></td>
+            <td>18.08 <small class="degen">↓28%</small></td>
+            <td>18.36 <small class="degen">↓27%</small></td>
+            <td>18.88 <small class="degen">↓25%</small></td>
             <td>29</td><td>36</td><td>36</td>
           </tr>
           <tr class="highlight-row">
             <td class="left"><strong>LESSViT <span class="ours-badge">ours</span></strong></td>
             <td>62.79</td>
-            <td class="best">58.81 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓6%</span></td>
-            <td class="best">54.00 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓14%</span></td>
-            <td class="best">62.46 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓1%</span></td>
+            <td class="best">58.81 <small class="degen">↓6%</small></td>
+            <td class="best">54.00 <small class="degen">↓14%</small></td>
+            <td class="best">62.46 <small class="degen">↓1%</small></td>
             <td>31.27</td>
-            <td class="best">26.16 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓16%</span></td>
-            <td class="best">18.87 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓40%</span></td>
-            <td class="best">28.33 <span style="color:#16a34a; font-style:italic; font-size:12.5px;">↓9%</span></td>
+            <td class="best">26.16 <small class="degen">↓16%</small></td>
+            <td class="best">18.87 <small class="degen">↓40%</small></td>
+            <td class="best">28.33 <small class="degen">↓9%</small></td>
             <td class="best">15</td><td class="best">26</td><td class="best">5</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Ablation -->
-    <div class="sub-label" style="margin-top:40px;">Ablation Study</div>
+    <div class="sub-label" style="margin-top:36px;">Ablation Study</div>
     <h3>Impact of Proposed Modules</h3>
-    <p>Ablation comparing SSRoPE vs. SIREN positional encoding and the effect of hierarchical channel sampling (HCS) ratio, evaluated under all four spectral configurations on a ViT-S backbone pretrained for 50 epochs.</p>
+    <p>Ablation comparing SSRoPE positional encoding against SIREN, and the effect of hierarchical channel sampling (HCS) ratio r<sub>HCS</sub>. Models use a ViT-S backbone pretrained with HyperMAE for 50 epochs. SSRoPE consistently improves performance under spectral shift settings. Lower r<sub>HCS</sub> reduces pretraining time by 17% with minimal impact on downstream performance.</p>
 
     <div class="table-scroll">
       <table>
@@ -737,17 +759,13 @@
             <th>r<sub>HCS</sub></th>
             <th colspan="4">CDL (mIoU ↑)</th>
             <th colspan="4">CORINE (mAP ↑)</th>
+            <th colspan="4">Avg. Seg. (mIoU ↑)</th>
           </tr>
           <tr>
             <th class="left"></th><th></th><th></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
-            <th><span class="cfg cfg-id">ID</span></th>
-            <th><span class="cfg cfg-sw">SW+</span></th>
-            <th><span class="cfg cfg-c82">C82</span></th>
-            <th><span class="cfg cfg-full">C202</span></th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
+            <th>C120<sub>VN+</sub></th><th>C120<sub>SW+</sub></th><th>C82</th><th>C202</th>
           </tr>
         </thead>
         <tbody>
@@ -755,44 +773,44 @@
             <td class="left"><strong>Default</strong></td>
             <td>SSRoPE</td><td>[0.2, 0.3]</td>
             <td class="best">40.04</td><td class="best">41.22</td><td class="best">35.60</td><td class="best">40.50</td>
-            <td class="best">70.74</td><td>68.30</td><td class="best">67.11</td><td>69.61</td>
+            <td>70.74</td><td>68.30</td><td class="best">67.11</td><td>69.61</td>
+            <td class="best">44.48</td><td class="best">42.66</td><td class="best">39.96</td><td class="best">43.63</td>
           </tr>
           <tr>
             <td class="left">w/o SSRoPE</td>
             <td>SIREN</td><td>[0.2, 0.3]</td>
             <td>28.79</td><td>29.60</td><td>30.58</td><td>29.82</td>
             <td>70.32</td><td class="best">69.48</td><td>64.68</td><td class="best">69.89</td>
+            <td>40.04</td><td>37.76</td><td>37.84</td><td>38.65</td>
           </tr>
           <tr>
             <td class="left">High r<sub>HCS</sub></td>
             <td>SSRoPE</td><td>[0.4, 0.5]</td>
             <td>40.93</td><td>40.87</td><td>35.88</td><td>39.13</td>
             <td>69.68</td><td>69.04</td><td>64.61</td><td>69.83</td>
+            <td>45.44</td><td>44.09</td><td>40.70</td><td>43.95</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Efficiency -->
-    <div class="sub-label" style="margin-top:40px;">Efficiency</div>
-    <h3>Scalability vs. Channel Count</h3>
-    <p>LESSViT maintains near-constant inference latency as channel count increases from 10 to 200. ChannelViT, which applies full spatial–spectral attention, exhibits rapidly growing latency and runs out of memory (OOM) at C=200 on 144 GB GPU hardware.</p>
+    <div class="sub-label" style="margin-top:36px;">Efficiency</div>
+    <h3>Inference Latency vs. Channel Count</h3>
+    <p>LESSViT maintains near-constant inference latency as channel count increases from C=10 to C=200. ChannelViT, which applies full explicit spatial–spectral attention with O(N²C²) complexity, exhibits rapidly growing latency and runs out of memory (OOM) at C=200 on a 144 GB GPU.</p>
 
     <div class="fig-wrap">
       <img src="assets/efficiency_latency.png" alt="Inference latency vs. channel count" style="max-width:440px;" />
-      <p class="fig-caption"><strong>Figure:</strong> Normalized inference latency vs. channel count (normalized to C=10). LESSViT scales with near-constant latency, while ChannelViT (explicit O(N²C²) attention) becomes OOM at C=200.</p>
+      <p class="fig-caption"><strong>Figure:</strong> Normalized inference latency vs. channel count (normalized to C=10). LESSViT scales with near-constant latency while ChannelViT becomes OOM at C=200, confirming that LESS Attention effectively decouples computational cost from spectral dimensionality.</p>
     </div>
 
-    <!-- Qualitative -->
-    <div class="sub-label" style="margin-top:40px;">Qualitative Results</div>
-    <h3>Segmentation Under Spectral Variation</h3>
-    <p>Comparing LESSViT with SpectralViT under all four spectral configurations. SpectralViT produces sharper in-distribution masks but degrades significantly under spectral shift and unseen wavelengths. LESSViT maintains more stable predictions across all settings.</p>
+    <div class="sub-label" style="margin-top:36px;">Qualitative Results</div>
+    <h3>Segmentation under Spectral Configuration Shift</h3>
+    <p>Qualitative comparison of LESSViT and SpectralViT under all four spectral configurations. In the in-distribution setting, SpectralViT produces more detailed segmentation maps due to its smaller patch size. Under cross-spectral generalization, SpectralViT exhibits large coherent misclassifications especially under spectral shift and channel expansion, while LESSViT maintains more stable predictions across all configurations.</p>
 
     <div class="fig-wrap">
       <img src="assets/vis.png" alt="Qualitative segmentation results under cross-spectral generalization" />
-      <p class="fig-caption"><strong>Figure:</strong> Qualitative segmentation results. PRGB = pseudo-RGB visualization of hyperspectral input; GT = ground-truth mask. Under spectral shift (C120<sub>SW+</sub>) and unseen wavelengths (C82), SpectralViT produces large coherent misclassifications, while LESSViT maintains more stable predictions.</p>
+      <p class="fig-caption"><strong>Figure:</strong> Qualitative segmentation results. PRGB denotes pseudo-RGB visualization of hyperspectral inputs; GT denotes ground-truth segmentation masks. Background pixels are masked out in predicted maps for clarity.</p>
     </div>
-
   </div>
 </section>
 
@@ -801,12 +819,13 @@
   <div class="container">
     <h2>Citation</h2>
     <p>If you find LESSViT useful in your research, please cite our paper:</p>
-    <div class="citation-box">@inproceedings{si2026lessvit,
-  title     = {{LESSViT}: Scalable Architecture for Hyperspectral Geospatial Modeling},
-  author    = {Si, Haozhe and Wan, Yuxuan and Do, Minh and
-               Vasisht, Deepak and Zhao, Han and Hamann, Hendrik F.},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year      = {2026},
+    <div class="citation-box">@article{si2025lessvit,
+  title   = {LESSViT: Robust Hyperspectral Representation Learning
+             under Spectral Configuration Shift},
+  author  = {Si, Haozhe and Wan, Yuxuan and Wang, Yuqing and
+             Do, Minh and Zhao, Han},
+  journal = {arXiv preprint arXiv:2503.12843},
+  year    = {2025}
 }</div>
 
     <div class="publication-links" style="margin-top:32px;">
@@ -831,7 +850,7 @@
 <!-- ══════════════ FOOTER ══════════════ -->
 <footer>
   <div class="container">
-    <p>LESSViT &ensp;·&ensp; University of Illinois Urbana-Champaign &ensp;·&ensp; IBM Research</p>
+    <p>LESSViT &ensp;·&ensp; University of Illinois Urbana-Champaign</p>
     <p style="margin-top:6px; font-size:12px;">
       <a href="https://github.com/uiuctml/LESSViT">GitHub</a> &ensp;&middot;&ensp;
       <a href="https://arxiv.org/abs/2503.12843">Paper</a>
