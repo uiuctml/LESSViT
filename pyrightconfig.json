@@ -1,0 +1,10 @@
+{
+    "include": [
+      "GeospatialFM"
+    ],
+  
+    "exclude": [
+      "results",
+      "data",
+    ],
+}
