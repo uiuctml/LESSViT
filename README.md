@@ -81,11 +81,14 @@ Pre-trained model checkpoints will be released soon. Stay tuned!
 
 If you find our work helpful, please cite our paper:
 ```bibtex
-@article{si2025lessvit,
-  title   = {LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift},
-  author  = {Si, Haozhe and Wan, Yuxuan and Wang, Yuqing and Do, Minh and Zhao, Han},
-  journal = {arXiv preprint arXiv:2503.12843},
-  year    = {2025},
+@misc{si2026lessvitrobusthyperspectralrepresentation,
+      title={LESSViT: Robust Hyperspectral Representation Learning under Spectral Configuration Shift}, 
+      author={Haozhe Si and Yuxuan Wan and Yuqing Wang and Minh Do and Han Zhao},
+      year={2026},
+      eprint={2605.18541},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2605.18541}, 
 }
 ```
 
