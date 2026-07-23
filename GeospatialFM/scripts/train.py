@@ -107,7 +107,7 @@ def main(args):
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
-        if training_args.local_rank == 0:
+        if training_args.local_process_index == 0:
             wandb.init(
                 project=f"{args.model_name}-pretrain",
                 name=args.run_name,
@@ -127,7 +127,7 @@ def main(args):
     total_batch_size = trainer.args.per_device_train_batch_size * trainer.accelerator.num_processes * trainer.args.gradient_accumulation_steps
     max_steps = trainer.args.max_steps if trainer.args.max_steps != -1 else math.ceil(len(trainer.train_dataset) / total_batch_size) * trainer.args.num_train_epochs
 
-    if training_args.local_rank == 0:
+    if training_args.local_process_index == 0:
         logger.info("***** Running training *****")
         logger.info(f"  Num examples = {len(trainer.train_dataset)}")
         logger.info(f"  Num Epochs = {trainer.args.num_train_epochs}")

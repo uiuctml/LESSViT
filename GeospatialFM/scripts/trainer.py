@@ -1,11 +1,24 @@
 from transformers import Trainer
 import numpy as np
-from typing import Dict
+from typing import Any, Dict, Union
+import torch
 
 class MAETrainer(Trainer):
     def __init__(self, modal_mode=None, **kwargs):
         super().__init__(**kwargs)
         self.modal_mode = modal_mode
+
+    def floating_point_ops(self, inputs: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        """
+        `Trainer.floating_point_ops` only handles a single string `main_input_name` and does
+        `main_input in inputs`, which crashes with `TypeError: unhashable type: 'list'` since
+        `SpatialSpectralMAEViT.main_input_name` is `['optical', 'radar']`. Delegate to the
+        model's own `estimate_tokens`, which already supports list-valued `main_input_name`.
+        """
+        if not hasattr(self.model, "num_parameters"):
+            return 0
+        tokens = self.model.estimate_tokens(inputs)
+        return 6 * tokens * self.model.num_parameters(exclude_embeddings=True)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if self.modal_mode == "random":

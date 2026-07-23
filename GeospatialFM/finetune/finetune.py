@@ -186,7 +186,7 @@ def main(args):
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
-        if training_args.local_rank == 0:
+        if training_args.local_process_index == 0:
             wandb.init(
                 project=f"gfm-{args.dataset_name}",
                 name=args.run_name,

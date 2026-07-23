@@ -208,7 +208,7 @@ class AttentionBranch(nn.Module):
         self.fused_attn = use_fused_attn() 
 
         self.qk = nn.Linear(dim, num_heads * head_dim * rank * 2, bias=qkv_bias)
-        self.v = nn.Linear(dim, num_heads * head_dim, bias=qkv_bias)
+        self.v = nn.Linear(dim, num_heads * head_dim * rank, bias=qkv_bias)
         self.q_norm = norm_layer(head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(head_dim) if qk_norm else nn.Identity()
         self.attn_drop = nn.Dropout(attn_drop)
@@ -236,13 +236,12 @@ class AttentionBranch(nn.Module):
         
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None, sin: torch.Tensor = None, cos: torch.Tensor = None) -> torch.Tensor:
         B, N, D = x.shape
-        v = self.v(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B, num_heads, N, D
+        v = self.v(x).reshape(B, N, self.num_heads, self.rank, self.head_dim).permute(0, 3, 2, 1, 4) # B, rank, num_heads, N, D
         qk = self.qk(x).reshape(B, N, 2, self.num_heads, self.rank, self.head_dim).permute(2, 0, 4, 3, 1, 5) # 2, B, rank, num_heads, N, head_dim
         q, k = qk.unbind(0)
         q, k = self.apply_rope(q, k, sin, cos)
         q, k = self.q_norm(q), self.k_norm(k) #B, rank, num_heads, N, head_dim
-        v = v.unsqueeze(1).expand(-1, self.rank, -1, -1, -1) # B, rank, num_heads, N, D
-    
+
         if self.fused_attn:
             x = F.scaled_dot_product_attention(
                 q, k, v, attn_mask=mask,
@@ -328,7 +327,7 @@ class LowRankAttention(nn.Module):
         xc = self.channel_branch(x_c, sin=sin_c, cos=cos_c)  # B, rank, num_heads, C, c_head_dim
         xs = self.spatial_branch(x_s, spatial_mask, sin=sin_hw, cos=cos_hw)  # B, rank, num_heads, HW, s_head_dim
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, rank, num_heads, C, HW, D
-        x = x.sum(dim=1) # B, num_heads, C, HW, D
+        x = x.sum(dim=1) / self.rank # B, num_heads, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
         x = self.proj(x) # B, C, HW, D
         x = self.proj_drop(x) # B, C, HW, D

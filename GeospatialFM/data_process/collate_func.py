@@ -16,12 +16,13 @@ def unimodal_collate_fn(batch, modal='optical', transform=None, random_crop=Fals
     
     for example in batch:
         assert modal in example, f"{modal} is not available in the example"
-        example[modal] = torch.tensor(example[modal])
+        example[modal] = example[modal] if isinstance(example[modal], torch.Tensor) else torch.tensor(example[modal])
+        channel_wv_value = example[f'{modal}_channel_wv']
+        channel_wv_value = channel_wv_value if isinstance(channel_wv_value, torch.Tensor) else torch.tensor(channel_wv_value)
         if normalize_wv:
-            example[f'{modal}_channel_wv'] = ((torch.tensor(example[f'{modal}_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+            example[f'{modal}_channel_wv'] = ((channel_wv_value - wv_min) / (wv_max - wv_min)).unsqueeze(0)
         else:
-            example[f'{modal}_channel_wv'] = torch.tensor(example[f'{modal}_channel_wv']).unsqueeze(0)
-        # example[f'{modal}_channel_wv'] = torch.tensor(example[f'{modal}_channel_wv']).unsqueeze(0)
+            example[f'{modal}_channel_wv'] = channel_wv_value.unsqueeze(0)
 
         if transform is not None:
             example = transform(example, crop_size=crop_size, scale=scale)
@@ -61,15 +62,18 @@ def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, 
 
     for example in batch:
         # to tensor
-        example['optical'] = torch.tensor(example['optical'])
-        example['radar'] = torch.tensor(example['radar'])
+        example['optical'] = example['optical'] if isinstance(example['optical'], torch.Tensor) else torch.tensor(example['optical'])
+        example['radar'] = example['radar'] if isinstance(example['radar'], torch.Tensor) else torch.tensor(example['radar'])
+        optical_wv_value = example['optical_channel_wv']
+        optical_wv_value = optical_wv_value if isinstance(optical_wv_value, torch.Tensor) else torch.tensor(optical_wv_value)
+        radar_wv_value = example['radar_channel_wv']
+        radar_wv_value = radar_wv_value if isinstance(radar_wv_value, torch.Tensor) else torch.tensor(radar_wv_value)
         if normalize_wv:
-            example['optical_channel_wv'] = ((torch.tensor(example['optical_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
-            example['radar_channel_wv'] = ((torch.tensor(example['radar_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+            example['optical_channel_wv'] = ((optical_wv_value - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+            example['radar_channel_wv'] = ((radar_wv_value - wv_min) / (wv_max - wv_min)).unsqueeze(0)
         else:
-            example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv']).unsqueeze(0)
-            example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv']).unsqueeze(0)
-        example['spatial_resolution'] = example['spatial_resolution']
+            example['optical_channel_wv'] = optical_wv_value.unsqueeze(0)
+            example['radar_channel_wv'] = radar_wv_value.unsqueeze(0)
         
         if transform is not None:
             example = transform(example, crop_size=crop_size, scale=scale)
