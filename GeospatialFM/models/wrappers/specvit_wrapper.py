@@ -42,11 +42,11 @@ class SpecViTEncoder(SpecVisionTransformer):
         return features
     
     def load_pretrained_weights(self, pretrained_model_dir):
-        # pretrained_model_paths = glob.glob(os.path.join(pretrained_model_dir, "pytorch_model.bin"))
-        # pretrained_model_paths.sort()
-        # pretrained_model_path = pretrained_model_paths[-1]
-        pretrained_model_path = pretrained_model_dir
-        
+        pretrained_model_paths = glob.glob(os.path.join(pretrained_model_dir, "*.bin")) + \
+            glob.glob(os.path.join(pretrained_model_dir, "*.pth"))
+        pretrained_model_paths.sort()
+        pretrained_model_path = pretrained_model_paths[-1]
+
         state_dict = torch.load(pretrained_model_path, map_location='cpu', weights_only=True)
         if isinstance(state_dict, dict):
             if 'state_dict' in state_dict:

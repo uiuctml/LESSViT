@@ -4,6 +4,7 @@ from GeospatialFM.models.wrappers.dinov3_wrapper import DINOv3Encoder, DINOv3Con
 from GeospatialFM.models.wrappers.dofa_wrapper import DOFAEncoder, DOFAConfig
 from GeospatialFM.models.wrappers.spatsigma_wrapper import SpatSigmaClsEncoder, SpatSigmaSegEncoder, SpatSigmaConfig
 from GeospatialFM.models.wrappers.channelvit_wrapper import ChannelViTEncoder, ChannelViTConfig
+from GeospatialFM.models.wrappers.hyperfree_wrapper import HyperFreeEncoder, HyperFreeConfig
 
 ENCODER_CONFIGS = {
     "lessvit": SpatialSpectralLowRankViTConfig,
@@ -12,6 +13,7 @@ ENCODER_CONFIGS = {
     "dofa": DOFAConfig,
     "spatsigma": SpatSigmaConfig,
     "channelvit": ChannelViTConfig,
+    "hyperfree": HyperFreeConfig,
 }
 
 ENCODER_MODELS = {
@@ -22,4 +24,5 @@ ENCODER_MODELS = {
     "spatsigma_cls": SpatSigmaClsEncoder,
     "spatsigma_seg": SpatSigmaSegEncoder,
     "channelvit": ChannelViTEncoder,
+    "hyperfree": HyperFreeEncoder,
 }

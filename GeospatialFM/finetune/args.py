@@ -87,12 +87,12 @@ def parse_args(sys_args=None):
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training")
     parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
-    parser.add_argument("--pretrained_model_path", type=str, default=None, help="Path to the pretrained model")
+    parser.add_argument("--pretrained_model_path", type=str, default=None, help="Directory containing the pretrained checkpoint(s) for --model_name (e.g. results/models/<model_name>/)")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings for Linear Probe")
     parser.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
     parser.add_argument("--early_stopping_patience", type=int, default=1, help="Early stopping patience")
     parser.add_argument("--early_stopping_threshold", type=float, default=0.0, help="Early stopping threshold")
-    parser.add_argument("--model_name", type=str, default="lessvit", help="Model name for finetuning. Should be one of the models in models/downstream_models.py")
+    parser.add_argument("--model_name", type=str, default="lessvit", choices=["lessvit", "specvit", "dinov3", "dofa", "spatsigma", "channelvit", "hyperfree"], help="Backbone encoder to finetune; see GeospatialFM/models/registry.py for the full set of supported baselines")
 
     # Optuna arguments\
     parser.add_argument("--use_optuna", action="store_true", help="Use optuna")

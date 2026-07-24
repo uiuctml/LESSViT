@@ -36,7 +36,7 @@ class DOFAEncoder(OFAViT):
             num_classes=config.num_classes,
         )
         
-    def forward_encoder(self, x, wave_list):
+    def forward_encoder(self, x, wave_list, **kwargs):
         wavelist = torch.tensor(wave_list, device=x.device).float()
         self.waves = wavelist
 
@@ -71,11 +71,10 @@ class DOFAEncoder(OFAViT):
         return new_pos_embed
        
     def load_pretrained_weights(self, pretrained_model_dir):
-        # pretrained_model_paths = glob.glob(os.path.join(pretrained_model_dir, "*.pth"))
-        # pretrained_model_paths.sort()
-        # pretrained_model_path = pretrained_model_paths[-1]
-        pretrained_model_path = pretrained_model_dir
-        
+        pretrained_model_paths = glob.glob(os.path.join(pretrained_model_dir, "*.pth"))
+        pretrained_model_paths.sort()
+        pretrained_model_path = pretrained_model_paths[-1]
+
         state_dict = torch.load(pretrained_model_path, map_location='cpu', weights_only=True)
         if isinstance(state_dict, dict):
             if 'state_dict' in state_dict:

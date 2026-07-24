@@ -56,22 +56,29 @@ We evaluate LESSViT under a cross-spectral generalization setting on the Spectra
 
 Downstream datasets: `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
 
-To launch fine-tuning on a SpectralEarth dataset:
+To launch fine-tuning on a SpectralEarth dataset, run:
+```shell
+bash launch_finetune.sh
+```
+which wraps:
 ```shell
 python3 GeospatialFM/finetune/finetune.py \
     --dataset_name ${DATASET_NAME} \
     --task_type ${TASK_TYPE} \
     --data_dir ${DATA_DIR} \
     --gen_task ${GEN_TASK} \
-    --pretrained_model_path ${CHECKPOINT_PATH} \
+    --model_name ${MODEL_NAME} \
+    --pretrained_model_path ${PRETRAINED_MODEL_PATH} \
     --run_name ${RUN_NAME} \
     --output_dir ${OUTPUT_DIR}
 ```
 
 - `--dataset_name`: One of `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
 - `--gen_task`: One of `id`, `ood_a`, `ood_complement`, `ood_full`.
+- `--model_name`: The backbone to fine-tune. `lessvit` (this work) or one of the supported baselines: `dofa`, `dinov3`, `specvit`, `spatsigma`, `channelvit`, `hyperfree` ([HyperFree](https://github.com/Jingtao-Li-CVer/HyperFree)).
+- `--pretrained_model_path`: **A directory**, not a file — this convention is the same for every backbone. Each encoder's `load_pretrained_weights` globs for its own checkpoint file(s) inside the directory it's given (see `GeospatialFM/models/wrappers/`). By convention, checkpoints for a given backbone live under `results/models/<model_name>/`, the same tree that pre-training and fine-tuning runs save their own checkpoints to.
 
-See [`GeospatialFM/finetune/args.py`](GeospatialFM/finetune/args.py) for full argument descriptions.
+See [`GeospatialFM/finetune/args.py`](GeospatialFM/finetune/args.py) for full argument descriptions, and [`GeospatialFM/models/registry.py`](GeospatialFM/models/registry.py) for the full set of supported baseline encoders.
 
 ## Model Weights
 

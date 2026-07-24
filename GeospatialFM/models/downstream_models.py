@@ -10,6 +10,8 @@ from typing import Dict, Any
 import logging
 from .conv_head import ConvHead, MoEConvHead
 import math
+import glob
+import os
 
 from .wrappers.specvit_wrapper import SpecViTEncoder, SpecViTConfig
 from .registry import ENCODER_CONFIGS, ENCODER_MODELS
@@ -196,9 +198,15 @@ class LESSWithTaskHead(PreTrainedModel):
             self.warnings_issued["estimate_tokens"] = True
         return 0
     
-    def load_pretrained_encoder(self, pretrained_model_path):
+    def load_pretrained_encoder(self, pretrained_model_dir):
+        # `pretrained_model_dir` is always a directory containing the checkpoint(s) for the
+        # selected --model_name backbone, so this convention is consistent across LESSViT's
+        # own checkpoints and every baseline encoder's `load_pretrained_weights`.
         if isinstance(self.encoder, SpatialSpectralLowRankViTEncoder):
             from safetensors import safe_open
+            safetensors_paths = glob.glob(os.path.join(pretrained_model_dir, "*.safetensors"))
+            safetensors_paths.sort()
+            pretrained_model_path = safetensors_paths[-1]
             with safe_open(pretrained_model_path, framework="pt", device="cpu") as f:
                 for key in f.keys():
                     if key.startswith("encoder.") and key != "encoder.perception_field_mask":
@@ -206,7 +214,7 @@ class LESSWithTaskHead(PreTrainedModel):
                         param = f.get_tensor(key)
                         self.state_dict()[key].copy_(param)
         else:
-            self.encoder.load_pretrained_weights(pretrained_model_path)
+            self.encoder.load_pretrained_weights(pretrained_model_dir)
 
 class LESSWithProjection(LESSWithTaskHead):
     def __init__(self, config):
@@ -249,7 +257,7 @@ class LESSWithProjection(LESSWithTaskHead):
             # Use the [CLS] token
             pooled_output = outputs[:, :, 0]
         else:
-            hidden_states = self.encoder.forward_encoder(optical, wave_list=wave_list)
+            hidden_states = self.encoder.forward_encoder(optical, wave_list=wave_list, spatial_resolution=spatial_resolution)
             if isinstance(self.encoder, SpatSigmaMixin):
                 return {"logits": hidden_states} if self.config.return_dict else hidden_states
             pooled_output = hidden_states[:, 0, ] # cls token
@@ -350,7 +358,7 @@ class LESSWithUPerNet(LESSWithTaskHead):
                 hidden_states = outputs.last_hidden_state
             x = hidden_states[:, 0, 1:] 
         else:
-            hidden_states = self.encoder.forward_encoder(optical, wave_list=wave_list)
+            hidden_states = self.encoder.forward_encoder(optical, wave_list=wave_list, spatial_resolution=spatial_resolution)
             if isinstance(self.encoder, SpatSigmaMixin):
                 return {"logits": hidden_states} if self.config.return_dict else hidden_states
             x = hidden_states[:, 1:]
