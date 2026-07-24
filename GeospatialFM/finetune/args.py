@@ -1,6 +1,8 @@
 import argparse
 import os
 
+from GeospatialFM.datasets.enmap.sensors import list_sensor_names
+
 def parse_args(sys_args=None):
     parser = argparse.ArgumentParser(description="GeospatialFM Finetune Arguments")
 
@@ -19,7 +21,11 @@ def parse_args(sys_args=None):
     parser.add_argument("--train_frac", type=float, default=1.0, help="Fraction of train set to be used in training")
     parser.add_argument("--val_frac", type=float, default=1.0, help="Fraction of val set to be used in evaluation")
     parser.add_argument("--test_frac", type=float, default=1.0, help="Fraction of test set to be used in testing")
-    parser.add_argument("--gen_task", type=str, default=None, choices=["id", "ood_a", "ood_full", "ood_complement"], help="Generalization task")
+    parser.add_argument("--gen_task", type=str, default=None,
+                        choices=["id", "ood_a", "ood_full", "ood_complement"] + list_sensor_names(),
+                        help="Generalization task: a native EnMAP channel-subset setting (id/ood_a/ood_full/ood_complement), "
+                             "or an SRF-resampled sensor config (see GeospatialFM/datasets/enmap/sensors.yaml) -- either way, "
+                             "training always stays on the native C120_VNIR+ subset and only val/test vary")
     # parser.add_argument("--data_seed", type=int, default=42, help="Seed for data splitting")
 
     # Model arguments

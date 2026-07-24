@@ -1,0 +1,29 @@
+# Target-sensor definitions for SRF-based spectral resampling eval (see sensors.py).
+# `enmap_identity` is not listed here -- it's derived programmatically from EnMAP's own S2C_WV
+# band centres (with FWHM approximated from local band spacing) as a sanity check, since it
+# needs to always track whatever S2C_WV in enmap.py contains.
+
+prisma_like:
+  wavelength_range_nm: [400, 2500]
+  spacing_nm: 12
+  fwhm_nm: 12
+
+sentinel2_like:
+  # Nominal S2A band centres/bandwidths (nm) as commonly reproduced in remote-sensing
+  # literature and the ESA Sentinel-2 User Guide's summary table. These are rounded
+  # "textbook" values, not a precise single-satellite SRF fit -- reasonable given we're
+  # already approximating each band's true (asymmetric) response with a symmetric Gaussian.
+  bands:
+    - {name: B1,  centre_nm: 443,  fwhm_nm: 20}
+    - {name: B2,  centre_nm: 490,  fwhm_nm: 65}
+    - {name: B3,  centre_nm: 560,  fwhm_nm: 35}
+    - {name: B4,  centre_nm: 665,  fwhm_nm: 30}
+    - {name: B5,  centre_nm: 705,  fwhm_nm: 15}
+    - {name: B6,  centre_nm: 740,  fwhm_nm: 15}
+    - {name: B7,  centre_nm: 783,  fwhm_nm: 20}
+    - {name: B8,  centre_nm: 842,  fwhm_nm: 115}
+    - {name: B8A, centre_nm: 865,  fwhm_nm: 20}
+    - {name: B9,  centre_nm: 945,  fwhm_nm: 20}
+    - {name: B10, centre_nm: 1375, fwhm_nm: 30}
+    - {name: B11, centre_nm: 1610, fwhm_nm: 90}
+    - {name: B12, centre_nm: 2190, fwhm_nm: 180}

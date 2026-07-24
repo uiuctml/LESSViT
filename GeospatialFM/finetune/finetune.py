@@ -23,8 +23,10 @@ from functools import partial
 from GeospatialFM.finetune.args import parse_args
 from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
 from GeospatialFM.datasets.enmap import get_enmap_downstream_metadata, get_enmap_downstream_dataset, ENMAP_DATASET
+from GeospatialFM.datasets.enmap.sensors import SENSOR_CONFIGS, load_sensor_config, compute_target_stats
 from GeospatialFM.data_process.transforms import get_transform, get_enmap_transform
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, linear_probe_collate_fn
+from GeospatialFM.data_process.srf import build_srf_matrix, summarize_srf
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
 ENMAP_DATASET_NAMES = list(ENMAP_DATASET.keys())
@@ -109,8 +111,31 @@ def main(args):
         except: # for landsat and other datasets
             optical_mean, optical_std = metadata['mean'], metadata['std']
             radar_mean, radar_std = None, None
-        train_transform, eval_transform = get_enmap_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+
+        # Training always stays on the native C120_VNIR+ subset regardless of --gen_task (see
+        # each EnMAP dataset's __getitem__), so train_transform always normalizes with native
+        # EnMAP stats and never applies SRF resampling.
+        train_transform, _ = get_enmap_transform(args.task_type, args.crop_size, args.scale, args.random_rotation,
                                                     optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
+
+        if args.gen_task in SENSOR_CONFIGS:
+            sensor = load_sensor_config(args.gen_task)
+            srf_matrix = build_srf_matrix(metadata["s2c"]["channel_wv"], sensor["lam_tgt"], sensor["fwhm_tgt"])
+            summarize_srf(sensor["lam_tgt"], srf_matrix, sensor["name"])
+            eval_optical_mean, eval_optical_std = compute_target_stats(
+                sensor["name"], srf_matrix, optical_mean, lam_tgt=sensor["lam_tgt"], data_root=args.data_dir,
+            )
+            # match the native path's plain-float-list convention (metadata["s2c"]["mean"/"std"])
+            # rather than leaving these as numpy float64 arrays, which would silently make
+            # NormalizeAll's output tensor float64 instead of float32.
+            eval_optical_mean, eval_optical_std = eval_optical_mean.tolist(), eval_optical_std.tolist()
+        else:
+            eval_optical_mean, eval_optical_std, srf_matrix = optical_mean, optical_std, None
+
+        _, eval_transform = get_enmap_transform(args.task_type, args.crop_size, args.scale, args.random_rotation,
+                                                    eval_optical_mean, eval_optical_std, radar_mean, radar_std, args.dataset_name,
+                                                    optical_srf_matrix=srf_matrix)
+
         dataset = get_enmap_downstream_dataset(args, train_transform, eval_transform, args.gen_task)
     else:
         metadata = get_metadata(args.dataset_name, args.dataset_version)

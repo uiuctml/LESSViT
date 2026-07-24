@@ -4,28 +4,34 @@ from torchvision.transforms import functional as TF
 from functools import partial
 import torch
 
-def NormalizeAll(optical=None, radar=None, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+from .srf import resample_cube
+
+def NormalizeAll(optical=None, radar=None, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, optical_srf_matrix=None):
      # normalize
     def normalize(x, mean, std):
         x = x.float()
         if len(x.shape) == 3:
             x = x.unsqueeze(0)
-        
+
         min_values = torch.tensor(mean) - 2 * torch.tensor(std)
-        max_values = torch.tensor(mean) + 2 * torch.tensor(std)            
-        
+        max_values = torch.tensor(mean) + 2 * torch.tensor(std)
+
         x_normalized = (x - min_values[None, :, None, None]) / (max_values[None, :, None, None] - min_values[None, :, None, None])
         x_clipped = torch.clip(x_normalized, 0, 1)
-            
+
         return x_clipped.squeeze(0)
-    
+
     if optical is not None:
         assert optical_mean is not None and optical_std is not None
         # to tensor
         if not isinstance(optical, torch.Tensor):
             optical = torch.tensor(optical)
+        if optical_srf_matrix is not None:
+            # SRF resampling is a weighted sum across raw bands, so it must run before any
+            # clipping -- on the raw cube, using the target sensor's own mean/std below.
+            optical = resample_cube(optical, optical_srf_matrix)
         optical = normalize(optical, optical_mean, optical_std)
-        
+
     if radar is not None:
         assert radar_mean is not None and radar_std is not None
         # to tensor
@@ -104,8 +110,8 @@ def pretrain_transform(example, crop_size=None, scale=None, optical_mean=None, o
 
     return example
 
-def segmentation_transform_one_sample(optical, radar, label, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                                       optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, random_crop=False):
+def segmentation_transform_one_sample(optical, radar, label, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True,
+                                       optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, random_crop=False, optical_srf_matrix=None):
     # Convert lists directly to tensors
     if optical is not None and not isinstance(optical, torch.Tensor):
         optical = torch.tensor(optical, dtype=torch.float32)
@@ -123,7 +129,7 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
         label = label.unsqueeze(0)
     
     # normalize
-    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
+    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std, optical_srf_matrix)
 
     # random crop
     if crop_size is not None and is_train and random_crop:
@@ -202,14 +208,14 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
     
     return example
 
-def classification_transform_one_sample(optical, radar, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                                        optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+def classification_transform_one_sample(optical, radar, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True,
+                                        optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, optical_srf_matrix=None):
     # Convert lists directly to tensors
     optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
     radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
-    
+
     # normalize
-    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
+    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std, optical_srf_matrix)
 
     # random crop
     if crop_size is not None and is_train:
@@ -287,19 +293,23 @@ def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, o
     
     return train_transform, eval_transform
 
-def get_enmap_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, dataset_name=None):
-    
+def get_enmap_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, dataset_name=None, optical_srf_matrix=None):
+    # NOTE: `optical_srf_matrix`/`optical_mean`/`optical_std` here apply to *both* the train_transform
+    # and eval_transform this returns. SRF-resampled sensor configs are eval-only (training always
+    # stays on the native C120_VNIR+ subset -- see each EnMAP dataset's `__getitem__`), so callers
+    # that want sensor resampling should call this twice: once with native stats/no srf matrix to get
+    # `train_transform`, once with the target sensor's stats/srf matrix to get `eval_transform`.
     if task_type == "segmentation":
-        train_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=True)
-        eval_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=False)
+        train_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True,
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=True, optical_srf_matrix=optical_srf_matrix)
+        eval_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False,
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=False, optical_srf_matrix=optical_srf_matrix)
     elif task_type == "classification" or task_type == "multilabel":
-        train_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
-        eval_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+        train_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True,
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, optical_srf_matrix=optical_srf_matrix)
+        eval_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False,
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, optical_srf_matrix=optical_srf_matrix)
     else:
         raise NotImplementedError
-    
+
     return train_transform, eval_transform

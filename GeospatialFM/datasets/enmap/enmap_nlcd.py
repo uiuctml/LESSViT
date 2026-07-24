@@ -9,6 +9,7 @@ from torch.utils.data import Dataset
 from torchgeo.datasets.nlcd import NLCD
 
 from .enmap import S2C_MEAN, S2C_STD, S2C_WV, SELECTED_CHANNEL_IDX_B, SELECTED_CHANNEL_IDX_A
+from .sensors import SENSOR_CONFIGS
 
 
 class EnMAPNLCDataset(Dataset):
@@ -116,6 +117,10 @@ class EnMAPNLCDataset(Dataset):
                 elif self.gen_task == "ood_complement":
                     optical = optical[[i for i in range(optical.shape[0]) if i not in SELECTED_CHANNEL_IDX_B], :, :]
                     optical_channel_wv = [optical_channel_wv[i] for i in range(202) if i not in SELECTED_CHANNEL_IDX_B]
+                elif self.gen_task in SENSOR_CONFIGS:
+                    # optical is already resampled to this sensor's C_tgt channels inside
+                    # self.transform(...) via optical_srf_matrix -- no further indexing here.
+                    optical_channel_wv = SENSOR_CONFIGS[self.gen_task]["lam_tgt"]
                 else:
                     raise ValueError(f"Invalid gen_task: {self.gen_task}")
 
