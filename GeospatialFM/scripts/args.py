@@ -33,7 +33,9 @@ def parse_args():
     parser.add_argument("--mask_ratio", type=float, default=0.75, help="Mask ratio for MAE")
     parser.add_argument("--channel_mask_ratio", type=float, default=0.5, help="Channel mask ratio for MAE")
     parser.add_argument("--rank", type=int, default=1, help="Rank for LowRankAttention")
-    
+    parser.add_argument("--attn_type", type=str, default="less", choices=["less", "full", "additive"], help="Spatial-spectral attention operator: less (Kronecker), full (softmax over all C*HW tokens), additive (project-then-broadcast-add fusion)")
+    parser.add_argument("--fusion_init_scale", type=float, default=1.0, help="Init scale for additive fusion's P_c/P_s projections (attn_type=additive only), used to match arm A's post-fusion activation std at init")
+
     # AdditionalModel arguments
     parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")
     parser.add_argument("--norm_pix_loss", action="store_true", help="Whether to normalize pixel loss")

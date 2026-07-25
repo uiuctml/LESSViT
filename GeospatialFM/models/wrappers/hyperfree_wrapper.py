@@ -54,6 +54,18 @@ class HyperFreeEncoder(ImageEncoderViT):
     model_type = "hyperfree"
 
     def __init__(self, config: HyperFreeConfig):
+        grid_size = config.img_size // config.patch_size
+        # HyperFree's released vit_b build hardcodes window_size=14, tuned for its own
+        # 512x512-patch training data (a 32x32 token grid at patch_size=16). This benchmark's
+        # crops are 128x128 (8x8 tokens), so window_partition would pad every windowed block
+        # up to 14x14=196 slots with only 64 real tokens -- ~67% zero-padding that isn't
+        # masked out of attention, corrupting every windowed block's output. That's not a
+        # capacity disadvantage inherent to HyperFree, it's a padding artifact this benchmark
+        # would never have exercised at its native resolution, so disable windowing (fall
+        # back to full attention on every block) whenever the configured grid can't fill even
+        # one real window -- this removes the artifact without changing what pixels the model
+        # sees, unlike upsampling the input to chase HyperFree's native resolution would.
+        effective_window_size = config.window_size if grid_size > config.window_size else 0
         super().__init__(
             img_size=config.img_size,
             patch_size=config.patch_size,
@@ -65,7 +77,7 @@ class HyperFreeEncoder(ImageEncoderViT):
             qkv_bias=config.qkv_bias,
             use_rel_pos=config.use_rel_pos,
             rel_pos_zero_init=config.rel_pos_zero_init,
-            window_size=config.window_size,
+            window_size=effective_window_size,
             global_attn_indexes=config.global_attn_indexes,
             # Keep a single-scale feature map (no patch merging) so the output grid always
             # matches img_size / patch_size, like the other wrapped encoders (DOFA, DINOv3, ...).

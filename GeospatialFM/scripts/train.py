@@ -22,6 +22,7 @@ from GeospatialFM.models.SpecViT.mae import SELECTED_CHANNEL_IDX, SpecViTMAE, Sp
 from GeospatialFM.scripts.trainer import MAETrainer
 from GeospatialFM.scripts.args import parse_args
 from GeospatialFM.scripts.utils import calculate_modal_loss, calculate_unimodal_loss, get_lasted_checkpoint
+from GeospatialFM.scripts.callbacks import ThroughputMemoryCallback, estimate_tokens_per_step
 
 logger = get_logger(__name__)
 
@@ -123,7 +124,18 @@ def main(args):
         compute_loss_func=custom_loss_function,
         modal_mode=args.modal_mode,
     )
-    
+
+    if args.dataset_name == "enmap":
+        tokens_per_step = estimate_tokens_per_step(
+            per_device_batch_size=args.per_device_train_batch_size,
+            num_processes=trainer.accelerator.num_processes,
+            crop_size=args.crop_size,
+            patch_size=args.patch_size,
+            base_channels=args.enmap_subset or 202,
+            channel_dropout=args.channel_dropout,
+        )
+        trainer.add_callback(ThroughputMemoryCallback(tokens_per_step))
+
     total_batch_size = trainer.args.per_device_train_batch_size * trainer.accelerator.num_processes * trainer.args.gradient_accumulation_steps
     max_steps = trainer.args.max_steps if trainer.args.max_steps != -1 else math.ceil(len(trainer.train_dataset) / total_batch_size) * trainer.args.num_train_epochs
 

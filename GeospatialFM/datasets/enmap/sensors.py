@@ -1,3 +1,4 @@
+import collections.abc
 import json
 import logging
 import os
@@ -116,7 +117,44 @@ def _build_registry():
     return registry
 
 
-SENSOR_CONFIGS = _build_registry()
+class _LazySensorRegistry(collections.abc.Mapping):
+    """Defers _build_registry() (and its band-dropping log warnings) until the first actual
+    lookup, rather than running it at import time.
+
+    Every EnMAP downstream dataset class does `from .sensors import SENSOR_CONFIGS` at module
+    level (see e.g. enmap_bdforet.py), and `GeospatialFM/datasets/enmap/__init__.py` eagerly
+    imports all of those dataset classes -- so anything that imports GeospatialFM.datasets.enmap
+    at all (including pretraining's scripts/train.py, which never touches gen_task or sensor
+    configs) would otherwise trigger this module's full registry construction and logging on
+    every import, unconditionally.
+    """
+
+    def __init__(self, builder):
+        self._builder = builder
+        self._registry = None
+
+    def _ensure_built(self):
+        if self._registry is None:
+            self._registry = self._builder()
+        return self._registry
+
+    def __getitem__(self, key):
+        return self._ensure_built()[key]
+
+    def __iter__(self):
+        return iter(self._ensure_built())
+
+    def __len__(self):
+        return len(self._ensure_built())
+
+    def __contains__(self, key):
+        return key in self._ensure_built()
+
+    def __repr__(self):
+        return repr(self._ensure_built())
+
+
+SENSOR_CONFIGS = _LazySensorRegistry(_build_registry)
 
 
 def list_sensor_names():

@@ -46,7 +46,9 @@ def parse_args(sys_args=None):
     parser.add_argument("--topk", type=int, default=3, help="Top-k for MoE, -1 for all channels,")
     parser.add_argument("--use_moe", action="store_true", help="Use MoE")
     parser.add_argument("--rank", type=int, default=1, help="Rank of the model")
-    
+    parser.add_argument("--attn_type", type=str, default="less", choices=["less", "full", "additive"], help="Spatial-spectral attention operator: must match the pretrained checkpoint's attn_type or state_dict loading will fail with a shape mismatch")
+    parser.add_argument("--fusion_init_scale", type=float, default=1.0, help="Init scale for additive fusion's P_c/P_s projections (attn_type=additive only); irrelevant once loading pretrained weights, only affects random init")
+
     # extra model arguments
     parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")
     parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")

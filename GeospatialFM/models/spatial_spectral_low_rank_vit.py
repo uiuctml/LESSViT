@@ -8,7 +8,8 @@ from functools import partial
 import numpy as np
 from .hyperspectral_patch_embed import HyperspectralPatchEmbed
 from .pos_chan_embed import PositionalChannelEmbedding, RopePositionChannelEmbedding
-from .low_rank_attention import LowRankBlock, get_perception_field_mask
+from .low_rank_attention import get_perception_field_mask
+from .attention_ops import LowRankBlock
 import torch.nn.functional as F
 import math
 
@@ -49,13 +50,31 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         rope_embed_base: float = 100.0,
         channel_dropout: Optional[List[float]] = None,
         classes: Optional[int] = None,
+        attn_type: str = "less",
+        fusion_init_scale: float = 1.0,
         **kwargs
     ):
         super().__init__(**kwargs)
+        assert attn_type in ("less", "full", "additive"), f"Unknown attn_type: {attn_type!r}"
+        self.attn_type = attn_type
+        self.fusion_init_scale = fusion_init_scale
         self.patch_size = patch_size
         self.embed_dim = embed_dim
+        # arm C (additive) reuses arm A's channel_dim/spatial_dim derivation
+        # unchanged -- it keeps the same low-rank branch widths as arm A and only
+        # projects up to head_dim at the fusion step (see
+        # AdditiveSpatialSpectralAttention), so no attn_type-specific override is
+        # needed here (unlike an earlier version of this design).
         self.channel_dim = channel_embed_dims_per_head * num_heads
-        self.spatial_dim = embed_dim // self.channel_dim * num_heads  
+        self.spatial_dim = embed_dim // self.channel_dim * num_heads
+        # Joint-RoPE head-dim partition for attn_type == "full": splits head_dim
+        # (embed_dim // num_heads) into a spatial (u,v) sub-block and a spectral
+        # (lambda) sub-block, default 50/50. Unused by "less"/"additive".
+        head_dim = embed_dim // num_heads
+        rope_spatial_split = head_dim // 2
+        rope_spectral_split = head_dim - rope_spatial_split
+        self.rope_spatial_split_dim = rope_spatial_split * num_heads
+        self.rope_channel_split_dim = rope_spectral_split * num_heads
         self.depth = depth
         self.num_heads = num_heads
         self.mlp_ratio = mlp_ratio
@@ -76,6 +95,11 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         self.decoder_embed_dim = decoder_embed_dim
         self.decoder_channel_dim = decoder_channel_embed_dims_per_head * decoder_num_heads
         self.decoder_spatial_dim = decoder_embed_dim // self.decoder_channel_dim * decoder_num_heads
+        decoder_head_dim = decoder_embed_dim // decoder_num_heads
+        decoder_rope_spatial_split = decoder_head_dim // 2
+        decoder_rope_spectral_split = decoder_head_dim - decoder_rope_spatial_split
+        self.decoder_rope_spatial_split_dim = decoder_rope_spatial_split * decoder_num_heads
+        self.decoder_rope_channel_split_dim = decoder_rope_spectral_split * decoder_num_heads
         self.decoder_depth = decoder_depth
         self.decoder_num_heads = decoder_num_heads
         self.decoder_out_chans = decoder_out_chans
@@ -140,19 +164,23 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         if not config.use_rope_embed:
             self.pos_chan_embed = PositionalChannelEmbedding(config.embed_dim)
         else:
+            # attn_type == "full" rotates a joint head-dim split (see
+            # FullSpatialSpectralAttention) rather than arms A/C's per-branch widths.
+            rope_spatial_dim = config.rope_spatial_split_dim if config.attn_type == "full" else config.spatial_dim
+            rope_channel_dim = config.rope_channel_split_dim if config.attn_type == "full" else config.channel_dim
             self.pos_chan_embed = RopePositionChannelEmbedding(
                 # embed_dim=config.embed_dim,
-                spatial_dim=config.spatial_dim,
-                channel_dim=config.channel_dim,
+                spatial_dim=rope_spatial_dim,
+                channel_dim=rope_channel_dim,
                 num_heads=config.num_heads,
                 base=config.rope_embed_base if hasattr(config, 'rope_embed_base') else 100.0
             )
-        
+
         if config.drop_path_uniform is True:
             dpr = [config.drop_path_rate] * config.depth
         else:
             dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.depth)]
-        
+
         # Create transformer blocks
         self.blocks = nn.ModuleList([
             LowRankBlock(
@@ -170,6 +198,8 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 rank=config.rank,
                 use_rope_embed=config.use_rope_embed,
+                attn_type=config.attn_type,
+                fusion_init_scale=config.fusion_init_scale,
             )
             for i in range(config.depth)
         ])
@@ -494,21 +524,25 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 skip_pool=False,
                 rank=config.rank,
+                attn_type=config.attn_type,
+                fusion_init_scale=config.fusion_init_scale,
             )
             for i in range(config.decoder_depth)
         ])
-        
+
         self.decoder_norm = norm_layer(config.decoder_embed_dim)
         self.decoder_optical_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
         self.decoder_radar_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
-        
+
         if not config.use_rope_embed:
             self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
         else:
+            decoder_rope_spatial_dim = config.decoder_rope_spatial_split_dim if config.attn_type == "full" else config.decoder_spatial_dim
+            decoder_rope_channel_dim = config.decoder_rope_channel_split_dim if config.attn_type == "full" else config.decoder_channel_dim
             self.pos_chan_embed = RopePositionChannelEmbedding(
                 # embed_dim=config.decoder_embed_dim,
-                spatial_dim=config.decoder_spatial_dim,
-                channel_dim=config.decoder_channel_dim,
+                spatial_dim=decoder_rope_spatial_dim,
+                channel_dim=decoder_rope_channel_dim,
                 num_heads=config.decoder_num_heads,
                 base=config.rope_embed_base if hasattr(config, 'rope_embed_base') else 100.0
             )

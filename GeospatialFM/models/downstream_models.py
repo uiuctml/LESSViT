@@ -69,13 +69,26 @@ class LESSViTEncoderConfig(PretrainedConfig):
         channel_dropout: Optional[List[float]] = None,
         model_name: str = "lessvit",
         task_type: str = None,
+        attn_type: str = "less",
+        fusion_init_scale: float = 1.0,
         **kwargs
     ):
         super().__init__(**kwargs)
+        assert attn_type in ("less", "full", "additive"), f"Unknown attn_type: {attn_type!r}"
+        self.attn_type = attn_type
+        self.fusion_init_scale = fusion_init_scale
         self.patch_size = patch_size
         self.embed_dim = embed_dim
+        # arm C (additive) reuses arm A's channel_dim/spatial_dim derivation
+        # unchanged -- must match the pretraining config's derivation exactly, or
+        # load_pretrained_encoder's state_dict shapes won't line up.
         self.channel_dim = channel_embed_dims_per_head * num_heads
-        self.spatial_dim = embed_dim // self.channel_dim * num_heads  
+        self.spatial_dim = embed_dim // self.channel_dim * num_heads
+        head_dim = embed_dim // num_heads
+        rope_spatial_split = head_dim // 2
+        rope_spectral_split = head_dim - rope_spatial_split
+        self.rope_spatial_split_dim = rope_spatial_split * num_heads
+        self.rope_channel_split_dim = rope_spectral_split * num_heads
         self.depth = depth
         self.num_heads = num_heads
         self.mlp_ratio = mlp_ratio
