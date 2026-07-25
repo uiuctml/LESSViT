@@ -46,7 +46,7 @@ class LESSViTEncoderConfig(PretrainedConfig):
         self,
         patch_size: int = 16,
         embed_dim: int = 768,
-        channel_embed_dims_per_head: int = 4,
+        channel_embed_dims_per_head: Optional[int] = None,
         depth: int = 12,
         num_heads: int = 12,
         mlp_ratio: float = 4.0,
@@ -73,15 +73,28 @@ class LESSViTEncoderConfig(PretrainedConfig):
         fusion_init_scale: float = 1.0,
         **kwargs
     ):
+        # Older checkpoints saved only the derived dimensions. Recover the original constructor
+        # value so they reload with the architecture they were trained with.
+        saved_channel_dim = kwargs.pop("channel_dim", None)
+        kwargs.pop("spatial_dim", None)
+        if channel_embed_dims_per_head is None:
+            if saved_channel_dim is None:
+                channel_embed_dims_per_head = 4
+            else:
+                if saved_channel_dim % num_heads != 0:
+                    raise ValueError(
+                        f"Saved channel_dim={saved_channel_dim} is not divisible by "
+                        f"num_heads={num_heads}"
+                    )
+                channel_embed_dims_per_head = saved_channel_dim // num_heads
+
         super().__init__(**kwargs)
         assert attn_type in ("less", "full", "additive"), f"Unknown attn_type: {attn_type!r}"
         self.attn_type = attn_type
         self.fusion_init_scale = fusion_init_scale
         self.patch_size = patch_size
         self.embed_dim = embed_dim
-        # arm C (additive) reuses arm A's channel_dim/spatial_dim derivation
-        # unchanged -- must match the pretraining config's derivation exactly, or
-        # load_pretrained_encoder's state_dict shapes won't line up.
+        self.channel_embed_dims_per_head = channel_embed_dims_per_head
         self.channel_dim = channel_embed_dims_per_head * num_heads
         self.spatial_dim = embed_dim // self.channel_dim * num_heads
         head_dim = embed_dim // num_heads
@@ -215,6 +228,7 @@ class LESSWithTaskHead(PreTrainedModel):
         # `pretrained_model_dir` is always a directory containing the checkpoint(s) for the
         # selected --model_name backbone, so this convention is consistent across LESSViT's
         # own checkpoints and every baseline encoder's `load_pretrained_weights`.
+        print(pretrained_model_dir)
         if isinstance(self.encoder, SpatialSpectralLowRankViTEncoder):
             from safetensors import safe_open
             safetensors_paths = glob.glob(os.path.join(pretrained_model_dir, "*.safetensors"))
@@ -226,6 +240,7 @@ class LESSWithTaskHead(PreTrainedModel):
                         # Get the corresponding key in target model
                         param = f.get_tensor(key)
                         self.state_dict()[key].copy_(param)
+            
         else:
             self.encoder.load_pretrained_weights(pretrained_model_dir)
 
@@ -314,6 +329,8 @@ class MoEUpperNet(nn.Module):
         return logits
         
 class LESSWithUPerNet(LESSWithTaskHead):
+    config_class = LESSWithUPerNetConfig
+
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
