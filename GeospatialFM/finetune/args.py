@@ -11,6 +11,11 @@ def parse_args(sys_args=None):
     parser.add_argument("--dataset_version", type=str, default=None, help="Version of the dataset")
     parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation"], required=True, help="Task type")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the GFMBench")
+    parser.add_argument("--pretrain_data_dir", type=str, default=None,
+                        help="EnMAP pretraining data root (SpectralEarthDataset, raw .tif patches -- NOT the same "
+                             "as --data_dir, which is the downstream GFMBench benchmark root). Only needed when "
+                             "--gen_task names an SRF-resampled sensor config and its std stats aren't already "
+                             "cached under results/srf_stats/; used to compute them.")
     parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
     parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")
     parser.add_argument("--use_8bit", action="store_true", help="Whether to use 8-bit data loading")

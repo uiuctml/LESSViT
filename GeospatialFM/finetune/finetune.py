@@ -140,7 +140,7 @@ def main(args):
             srf_matrix = build_srf_matrix(metadata["s2c"]["channel_wv"], sensor["lam_tgt"], sensor["fwhm_tgt"])
             summarize_srf(sensor["lam_tgt"], srf_matrix, sensor["name"])
             eval_optical_mean, eval_optical_std = compute_target_stats(
-                sensor["name"], srf_matrix, optical_mean, lam_tgt=sensor["lam_tgt"], data_root=args.data_dir,
+                sensor["name"], srf_matrix, optical_mean, lam_tgt=sensor["lam_tgt"], data_root=args.pretrain_data_dir,
             )
             # match the native path's plain-float-list convention (metadata["s2c"]["mean"/"std"])
             # rather than leaving these as numpy float64 arrays, which would silently make
