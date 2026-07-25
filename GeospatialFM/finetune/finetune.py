@@ -28,6 +28,8 @@ from GeospatialFM.data_process.transforms import get_transform, get_enmap_transf
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, linear_probe_collate_fn
 from GeospatialFM.data_process.srf import build_srf_matrix, summarize_srf
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
+from GeospatialFM.models.spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
+from GeospatialFM.models.wrappers.spatsigma_wrapper import SpatSigmaMixin
 
 ENMAP_DATASET_NAMES = list(ENMAP_DATASET.keys())
 
@@ -46,17 +48,32 @@ def compute_encoding(batch, model, task_type, modal='optical'):
     optical_channel_wv = None if optical_channel_wv is None else torch.tensor(optical_channel_wv[0]).unsqueeze(0).to(model.device)
     radar_channel_wv = None if radar_channel_wv is None else torch.tensor(radar_channel_wv[0]).unsqueeze(0).to(model.device)
     spatial_resolution = None if spatial_resolution is None else spatial_resolution[0]
-    labels = None if labels is None else torch.tensor(labels)
-
-    with torch.no_grad():    
-        outputs = model(optical=optical, radar=radar, optical_channel_wv=optical_channel_wv, radar_channel_wv=radar_channel_wv, spatial_resolution=spatial_resolution)
-        
-    if isinstance(outputs, tuple):
-        outputs = outputs[0]
+    if labels is None:
+        pass
     else:
-        outputs = outputs.last_hidden_state
-    
-    features = outputs[:, :, 0].cpu()
+        try:
+            labels = torch.tensor(labels)
+        except (TypeError, ValueError):
+            # Segmentation labels are per-pixel masks (one tensor/array per example), not a
+            # scalar/list-of-scalars, so torch.tensor(labels) can't stack them directly.
+            labels = torch.stack([l if isinstance(l, torch.Tensor) else torch.tensor(l) for l in labels])
+
+    with torch.no_grad():
+        if isinstance(model, SpatialSpectralLowRankViTEncoder):
+            outputs = model(optical=optical, radar=radar, optical_channel_wv=optical_channel_wv, radar_channel_wv=radar_channel_wv, spatial_resolution=spatial_resolution)
+            hidden_states = outputs[0] if isinstance(outputs, tuple) else outputs.last_hidden_state
+            # Mirrors LESSWithProjection/LESSWithUPerNet's single-modality read-out: CLS token
+            # (index 0) across channels for classification, channel-0 patch tokens (index 1:)
+            # for segmentation.
+            features = hidden_states[:, 0, 1:] if task_type == "segmentation" else hidden_states[:, :, 0]
+        else:
+            assert not isinstance(model, SpatSigmaMixin), \
+                "SpatSigma bundles its task head inside the encoder -- linear probing (--lp) is not supported for --model_name spatsigma"
+            wave_list = (optical_channel_wv.squeeze(dim=0) / 1000).cpu().tolist()
+            hidden_states = model.forward_encoder(optical, wave_list=wave_list, spatial_resolution=spatial_resolution)
+            features = hidden_states[:, 1:] if task_type == "segmentation" else hidden_states[:, 0]
+
+    features = features.cpu()
 
     return {"features": features, "labels": labels}
 
@@ -77,7 +94,7 @@ def model_init_template(trial, lp=False):
             param.requires_grad = False
     
     if lp:
-        return model.classifier
+        return model.decoder if args.task_type == "segmentation" else model.classifier
     else:
         return model
 

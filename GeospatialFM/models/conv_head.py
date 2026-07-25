@@ -161,3 +161,32 @@ class ConvHead(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.segmentation_conv(x)
+
+
+class LinearConvHead(nn.Module):
+    """Linear-probing counterpart to ConvHead: a single 1x1 conv (no hidden layers, no
+    BatchNorm/ReLU) from patch tokens to per-pixel logits, followed by one bilinear upsample
+    back to full image resolution. Keeps the frozen-encoder readout strictly affine, matching
+    the definition of a linear probe used for classification's LinearHead.
+
+    Dispatches on input rank like LinearHead does: called standalone (rank 3, [B, N, D] patch
+    tokens with no CLS, no channel dim) when used as the Trainer's model in finetune.py's
+    cached linear-probe path, vs. called as a sub-decoder (rank 4, [B, D, H, W]) from
+    LESSWithUPerNet.forward, which already does the patch-grid reshape itself.
+    """
+    def __init__(self, embedding_size: int, num_classes: int, patch_size: int):
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.Conv2d(embedding_size, num_classes, kernel_size=1)
+
+    def forward(self, x: Tensor, labels=None):
+        standalone = x.dim() == 3
+        if standalone:
+            B, N, D = x.shape
+            H = W = int(math.sqrt(N))
+            x = x.transpose(1, 2).reshape(B, D, H, W)
+
+        logits = self.proj(x)
+        logits = F.interpolate(logits, scale_factor=self.patch_size, mode='bilinear', align_corners=False)
+
+        return {'logits': logits} if standalone else logits
