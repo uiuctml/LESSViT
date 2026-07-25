@@ -31,7 +31,7 @@ from GeospatialFM.data_process.transforms import get_enmap_transform
 from GeospatialFM.datasets.enmap import ENMAP_DATASET, get_enmap_downstream_dataset, get_enmap_downstream_metadata
 from GeospatialFM.datasets.enmap.enmap import SELECTED_CHANNEL_IDX_A, SELECTED_CHANNEL_IDX_B
 from GeospatialFM.datasets.enmap.sensors import SENSOR_CONFIGS, compute_target_stats, load_sensor_config
-from GeospatialFM.models.downstream_models import LESSWithUPerNet
+from GeospatialFM.models.downstream_models import LESSWithUPerNet, LESSWithUPerNetConfig
 from GeospatialFM.models.registry import ENCODER_CONFIGS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -94,7 +94,11 @@ def find_checkpoint(results_dir, dataset_name, model_name):
     """Locate the single fine-tuned checkpoint for (model, dataset), trained with --gen_task id
     (see launch_finetune.sh's RUN_NAME=${MODEL_NAME}_${GEN_TASK} convention) -- the highest-step
     checkpoint-N under results/models/<dataset_name>/<model_name>_id/."""
-    pattern = os.path.join(results_dir, "models", dataset_name, f"{model_name}_id", "checkpoint-*")
+    print(results_dir)
+    print(dataset_name)
+    print(model_name)
+    pattern = os.path.join(results_dir, "models", dataset_name, f"{model_name}_id_lr3e-4", "checkpoint-*")
+    print(pattern)
     candidates = glob.glob(pattern)
     if not candidates:
         return None
@@ -110,7 +114,7 @@ def find_checkpoint(results_dir, dataset_name, model_name):
 
 def build_eval_dataset(args, dataset_name, gen_task, sensor_stats_cache):
     metadata = get_enmap_downstream_metadata(dataset_name)
-    crop_size = metadata["size"]
+    crop_size = 128
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     optical_srf_matrix = None
 
@@ -211,7 +215,10 @@ def main(args):
                 try:
                     if model is None:
                         logger.info("Loading checkpoint for model=%s dataset=%s from %s", model_name, dataset_name, ckpt_dir)
-                        model = LESSWithUPerNet.from_pretrained(ckpt_dir).to(device)
+                        model = LESSWithUPerNet.from_pretrained(
+                            ckpt_dir,
+                            num_labels=num_classes,
+                        ).to(device)
 
                     dataset, _ = build_eval_dataset(args, dataset_name, gen_task, sensor_stats_cache)
                     iou = evaluate(model, dataset, num_classes, ignore_index, args.batch_size, device)
