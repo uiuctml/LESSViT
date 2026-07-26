@@ -80,24 +80,6 @@ python3 GeospatialFM/finetune/finetune.py \
 
 See [`GeospatialFM/finetune/args.py`](GeospatialFM/finetune/args.py) for full argument descriptions, and [`GeospatialFM/models/registry.py`](GeospatialFM/models/registry.py) for the full set of supported baseline encoders.
 
-### Linear Probing Baseline
-
-As a baseline alongside full fine-tuning, `--lp` freezes the pretrained encoder and trains only a linear read-out head on top of it (a single 1x1 conv + bilinear upsample for segmentation, matching the definition of a linear probe). Same protocol as fine-tuning: train once on `--gen_task id`, then evaluate the frozen probe across the other spectral settings without retraining.
-
-To launch linear-probe training, run:
-```shell
-bash launch_finetune_lp.sh
-```
-which wraps `finetune.py` with `--lp` added.
-
-To evaluate cross-spectral generalization for a trained probe, run:
-```shell
-bash launch_eval_cross_sensor_lp.sh
-```
-which wraps [`GeospatialFM/finetune/eval_cross_sensor_lp.py`](GeospatialFM/finetune/eval_cross_sensor_lp.py), the `--lp` counterpart to [`GeospatialFM/finetune/eval_cross_sensor.py`](GeospatialFM/finetune/eval_cross_sensor.py). Since `--lp` training saves only the decoder (no encoder/config to reload via `from_pretrained`), this script rebuilds the architecture from CLI args, reloads the original frozen pretrained encoder checkpoint, and loads the trained decoder weights on top -- writing results to the same tidy CSV schema as `cross_sensor_eval.csv`.
-
-Not supported for `--model_name spatsigma`, which bundles its task head inside the encoder.
-
 ## Model Weights
 
 Pre-trained model checkpoints will be released soon. Stay tuned!

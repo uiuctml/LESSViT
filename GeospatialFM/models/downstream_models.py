@@ -8,7 +8,7 @@ from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
 import torch.nn.functional as F
 from typing import Dict, Any
 import logging
-from .conv_head import ConvHead, MoEConvHead, LinearConvHead
+from .conv_head import ConvHead, MoEConvHead
 import math
 import glob
 import os
@@ -71,7 +71,6 @@ class LESSViTEncoderConfig(PretrainedConfig):
         task_type: str = None,
         attn_type: str = "less",
         fusion_init_scale: float = 1.0,
-        lp: bool = False,
         **kwargs
     ):
         # Older checkpoints saved only the derived dimensions. Recover the original constructor
@@ -136,7 +135,6 @@ class LESSViTEncoderConfig(PretrainedConfig):
 
         self.model_name = model_name
         self.task_type = task_type
-        self.lp = lp
 
 class LESSWithProjectionConfig(LESSViTEncoderConfig):
     model_type = "less_with_projection"
@@ -339,13 +337,7 @@ class LESSWithUPerNet(LESSWithTaskHead):
         self.encoder = get_encoder(config.model_name, config.task_type, config.num_labels, config)
         
         if config.model_name != "spatsigma":
-            if config.lp:
-                self.decoder = LinearConvHead(
-                    embedding_size=config.embed_dim,
-                    num_classes=config.num_labels,
-                    patch_size=config.patch_size
-                )
-            elif config.use_moe:
+            if config.use_moe:
                 # self.decoder = MoEUpperNet(config.num_labels, config.image_size, config.embed_dim, config.num_experts, config.topk)
                 self.decoder = MoEConvHead(
                     embedding_size=config.embed_dim,
@@ -359,7 +351,7 @@ class LESSWithUPerNet(LESSWithTaskHead):
                 #     num_classes=config.num_labels,
                 #     image_size=config.image_size,
                 #     debug=False
-                # )
+                # ) 
                 self.decoder = ConvHead(
                     embedding_size=config.embed_dim,
                     num_classes=config.num_labels,
@@ -404,7 +396,7 @@ class LESSWithUPerNet(LESSWithTaskHead):
         if isinstance(self.decoder, UPerNet):
             # Get segmentation logits
             logits = self.decoder(hidden_states[:, 0, 1:]) # [batch_size, num_patches, embed_dim]
-        elif isinstance(self.decoder, (ConvHead, LinearConvHead)):
+        elif isinstance(self.decoder, ConvHead):
             # Get classification logits
             # x = hidden_states[:, 0, 1:] # [batch_size, num_patches, embed_dim]
             # x = hidden_states[:, 1:]
