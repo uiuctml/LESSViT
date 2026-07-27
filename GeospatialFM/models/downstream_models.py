@@ -267,6 +267,8 @@ class LESSWithTaskHead(PreTrainedModel):
             self.encoder.load_pretrained_weights(pretrained_model_dir)
 
 class LESSWithProjection(LESSWithTaskHead):
+    config_class = LESSWithProjectionConfig
+
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -280,6 +282,11 @@ class LESSWithProjection(LESSWithTaskHead):
 
         # Initialize weights
         self.apply(self._init_weights)
+        # Required by this transformers version's from_pretrained (sets all_tied_weights_keys
+        # and other PreTrainedModel bookkeeping via init_weights()) -- harmless alongside the
+        # manual apply() above: any random init post_init() applies here is overwritten by the
+        # real state_dict either from_pretrained loads next, or load_pretrained_encoder copies in.
+        self.post_init()
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -399,6 +406,11 @@ class LESSWithUPerNet(LESSWithTaskHead):
         
         # Initialize weights
         self.apply(self._init_weights)
+        # Required by this transformers version's from_pretrained (sets all_tied_weights_keys
+        # and other PreTrainedModel bookkeeping via init_weights()) -- harmless alongside the
+        # manual apply() above: any random init post_init() applies here is overwritten by the
+        # real state_dict either from_pretrained loads next, or load_pretrained_encoder copies in.
+        self.post_init()
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

@@ -10,7 +10,7 @@ NUM_HEADS=6
 
 DECODER_DEPTH=4
 EMBED_DIMS=4
-RANK=4
+RANK=1
 
 accelerate launch GeospatialFM/scripts/train.py \
     --dataset_name enmap \

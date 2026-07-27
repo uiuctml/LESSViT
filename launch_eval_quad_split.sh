@@ -12,7 +12,7 @@
 # hparams on id, report results on all configs.
 ROOT_DIR="/home/haozhesi/LESSViT"
 export PYTHONPATH="${PYTHONPATH:-}:$ROOT_DIR"
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # Downstream benchmark tiles (as opposed to splits/) -- needs read access granted
 # before this can run, same note as launch_eval_effective_rank.sh.
@@ -22,15 +22,23 @@ DATA_DIR=/datasets/disk3/geospatial
 # under SRF_CACHE_DIR). Leave empty if only running native gen_tasks (id/ood_*).
 PRETRAIN_DATA_DIR=/datasets/disk2/geospatial/enmap/enmap
 
-# Space-separated lists; leave empty ("") to use eval_quad_split.py's defaults (all
-# 3 arms / all 5 README downstream datasets / all 9 gen_tasks: id, ood_a, ood_full,
-# ood_complement, enmap_identity, prisma_like, sentinel2_like, desis, eo1h). The last
-# two (desis/eo1h) evaluate enmap_cdl's checkpoint against desis_cdl's/eo1_cdl's own
-# real test data -- only meaningful when DATASETS includes enmap_cdl; requesting them
-# against any other dataset raises a clear error (incompatible label spaces).
+# Space-separated lists; leave empty ("") to use eval_quad_split.py's defaults: all 3
+# arms / all 5 README downstream datasets / DEFAULT_GEN_TASKS = id, ood_a, ood_full,
+# ood_complement, prisma_like, sentinel2_like, eo1h_like, desis_like. The last two
+# SRF-resample enmap_cdl's OWN imagery onto EO-1 Hyperion's/DESIS's real band centres
+# (isolates sensor-spectral-response transfer from geography/crop-mix confounds).
+# enmap_identity (sanity-check only) and the real desis_cdl/eo1_cdl datasets (desis/
+# eo1h -- superseded by desis_like/eo1h_like, confounded with a geography/crop-mix
+# shift) are opt-in only, not in the default -- pass them explicitly in GEN_TASKS if
+# wanted. desis/eo1h/desis_like/eo1h_like are only meaningful when DATASETS includes
+# enmap_cdl (the only checkpoint whose label space matches); desis_like/eo1h_like
+# work identically for any dataset (they just change the input channels), but
+# desis/eo1h raise a clear error against any dataset other than enmap_cdl.
 ARMS=""
 DATASETS=""
-GEN_TASKS=""
+# Excludes desis_like and sentinel2_like per explicit request (skip DESIS/Sentinel
+# generalization this run) -- keeps native configs + prisma_like + eo1h_like.
+GEN_TASKS="id ood_a ood_full ood_complement prisma_like eo1h_like"
 
 RESULTS_DIR=./results
 SRF_CACHE_DIR=./results/srf_stats

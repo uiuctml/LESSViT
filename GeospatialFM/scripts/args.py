@@ -18,6 +18,7 @@ def parse_args():
     # Model arguments
     parser.add_argument("--patch_size", type=int, default=16, help="Size of patches for hyperspectral patch embedding")
     parser.add_argument("--in_channels", type=int, default=None, help="Number of hyperspectral input channels. If not set, infer from dataset metadata when possible")
+    parser.add_argument("--reduced_channels", type=int, default=128, help="SpecViT only: channels the SpectralAdapter produces before 2D patch embedding (must be 128, its Conv3d stack's output width is hardcoded)")
     parser.add_argument("--embed_dim", type=int, default=768, help="Embedding dimension")
     parser.add_argument("--channel_embed_dims_per_head", type=int, default=4, help="Number of channel embedding dimensions per head")
     parser.add_argument("--depth", type=int, default=12, help="Number of transformer layers")

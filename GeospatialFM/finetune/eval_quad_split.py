@@ -57,18 +57,29 @@ DATASET_TASK_TYPE = {
 # (that's what LR-sweep training/validation always used, per launch_finetune_arm_*.sh) --
 # gen_tasks here only controls which spectral configs the *selected* checkpoint gets reported on.
 NATIVE_GEN_TASKS = ["id", "ood_a", "ood_full", "ood_complement"]
-SENSOR_GEN_TASKS = list(SENSOR_CONFIGS.keys())
+# enmap_identity (an SRF-identity passthrough, used elsewhere purely as an id/ood_full sanity
+# check) is excluded from the default sensor list, matching eval_generalization.py's convention --
+# prisma_like/sentinel2_like/eo1h_like/desis_like are the genuine SRF-resampled sensors reported
+# on by default. eo1h_like/desis_like resample enmap_cdl's OWN imagery/labels/geography onto
+# EO-1 Hyperion's/DESIS's real calibrated band centres (sensors.py/sensors.yaml), isolating
+# "does this checkpoint transfer across sensor spectral response" from confounds like a
+# different dataset's geography or crop mix.
+SENSOR_GEN_TASKS = [name for name in SENSOR_CONFIGS.keys() if name != "enmap_identity"]
 
-# "desis"/"eo1h": real alternative-sensor test sets (desis_cdl/eo1_cdl) that share
-# enmap_cdl's CDL label scheme -- evaluated the same way as ood_*/prisma_like/sentinel2_like:
-# no separate fine-tune, just a different eval-time input source for the SAME enmap_cdl
-# checkpoint. Internally uses gen_task=None (full native bands, no EnMAP-index-based
+# "desis"/"eo1h": opt-in only (not in DEFAULT_GEN_TASKS) -- the real desis_cdl/eo1_cdl test
+# sets, evaluated directly instead of SRF-simulated from enmap_cdl. Superseded as the default
+# cross-sensor check by eo1h_like/desis_like above: the real datasets turned out to differ from
+# enmap_cdl in geography and crop-type distribution (e.g. enmap_cdl has meaningful Sugarcane/
+# Citrus/Prunes coverage that's ~0% in eo1_cdl), confounding sensor transfer with a distribution
+# shift the SRF-simulated versions don't have. Still available via --gen_tasks desis eo1h
+# explicitly. Internally uses gen_task=None (full native bands, no EnMAP-index-based
 # subsetting -- that subsetting is specific to EnMAP's own 202-band grid and doesn't apply
 # to a genuinely different sensor's own bands).
 REAL_SENSOR_GEN_TASKS = {"desis": "desis_cdl", "eo1h": "eo1_cdl"}
 REAL_SENSOR_ANCHOR_DATASET = "enmap_cdl"  # only dataset whose label scheme (CDL) matches
 
-ALL_GEN_TASKS = NATIVE_GEN_TASKS + SENSOR_GEN_TASKS + list(REAL_SENSOR_GEN_TASKS.keys())
+DEFAULT_GEN_TASKS = NATIVE_GEN_TASKS + SENSOR_GEN_TASKS
+ALL_GEN_TASKS = NATIVE_GEN_TASKS + list(SENSOR_CONFIGS.keys()) + list(REAL_SENSOR_GEN_TASKS.keys())
 
 CSV_FIELDS = ["arm", "dataset", "gen_task", "n_bands", "task_type", "metric_name", "value", "n_samples", "reason"]
 
@@ -383,9 +394,13 @@ def parse_args():
     parser.add_argument("--output_csv", type=str, default=os.path.join("results", "quad_split_eval.csv"))
     parser.add_argument("--arms", type=str, nargs="+", default=ARMS, choices=ARMS)
     parser.add_argument("--datasets", type=str, nargs="+", default=DEFAULT_DATASETS, choices=list(DATASET_TASK_TYPE.keys()))
-    parser.add_argument("--gen_tasks", type=str, nargs="+", default=ALL_GEN_TASKS, choices=ALL_GEN_TASKS,
+    parser.add_argument("--gen_tasks", type=str, nargs="+", default=DEFAULT_GEN_TASKS, choices=ALL_GEN_TASKS,
                         help="Spectral configs to report the best-on-native-id checkpoint's performance on -- "
                              "checkpoint *selection* always uses native id val performance regardless of this list. "
+                             "Default excludes enmap_identity (sanity-check-only) and the real desis/eo1h datasets "
+                             "(superseded by desis_like/eo1h_like's SRF resampling, which isolates sensor transfer "
+                             "from desis_cdl/eo1_cdl's confounding geography/crop-mix shift) -- pass them explicitly "
+                             "to opt in. "
                              "'desis'/'eo1h' evaluate enmap_cdl's checkpoint against desis_cdl's/eo1_cdl's own real "
                              "test data (same CDL labels, genuinely different sensor) -- only valid with --datasets "
                              "enmap_cdl, since that's the only checkpoint whose label space matches.")

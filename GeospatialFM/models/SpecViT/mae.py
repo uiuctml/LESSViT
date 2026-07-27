@@ -1,6 +1,7 @@
 from functools import partial
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 import logging
+import random
 
 import torch
 import torch.nn as nn
@@ -40,6 +41,7 @@ class SpecViTMAEConfig(PretrainedConfig):
         init_values: Optional[float] = None,
         norm_pix_loss: bool = True,
         in_channels: int = len(SELECTED_CHANNEL_IDX),
+        channel_dropout: Optional[List[float]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -52,6 +54,16 @@ class SpecViTMAEConfig(PretrainedConfig):
         self.reduced_channels = reduced_channels
         self.mask_ratio = mask_ratio
         self.channel_mask_ratio = channel_mask_ratio
+        # HCS-style range: same [min_drop, max_drop] convention/values as the LowRank family's
+        # --channel_dropout (spatial_spectral_low_rank_vit.py's config field, e.g. [0.7, 0.8]),
+        # but applied via SpecViT's own existing zero-mask mechanism (random_channel_masking
+        # below) rather than LowRank's gather-based channel-count reduction: each training
+        # forward call samples a fresh scalar ratio uniformly from this range (instead of using
+        # the single fixed channel_mask_ratio above), so the *fraction* masked varies per step
+        # the same way HCS's kept-channel-*count* does, without shrinking the actual tensor
+        # width (no decoder changes needed -- see SpecViTMAE.forward). None (default) preserves
+        # the original fixed-channel_mask_ratio behavior exactly.
+        self.channel_dropout = channel_dropout
         self.decoder_embed_dim = decoder_embed_dim
         self.decoder_depth = decoder_depth
         self.decoder_num_heads = decoder_num_heads
@@ -292,9 +304,23 @@ class SpecViTMAE(PreTrainedModel):
             )
 
         mask_ratio = self.config.mask_ratio if mask_ratio is None else mask_ratio
-        channel_mask_ratio = (
-            self.config.channel_mask_ratio if channel_mask_ratio is None else channel_mask_ratio
-        )
+        if channel_mask_ratio is not None:
+            pass  # explicit override always wins, same as LowRank's channel_dropout convention
+        elif self.config.channel_dropout is not None and self.training:
+            # HCS-style: sample a fresh ratio each training step from [min_drop, max_drop]
+            # (same values/semantics as the LowRank family's --channel_dropout) instead of using
+            # the single fixed config.channel_mask_ratio -- see SpecViTMAEConfig's channel_dropout
+            # field docstring for why this varies the mask *ratio* rather than the channel *count*.
+            channel_dropout = sorted(self.config.channel_dropout)
+            assert len(channel_dropout) in (1, 2), f"channel_dropout must have 1 or 2 values, got {channel_dropout}"
+            for v in channel_dropout:
+                assert 0.0 <= v < 1.0, f"channel_dropout values must be in [0, 1), got {channel_dropout}"
+            channel_mask_ratio = (
+                channel_dropout[0] if len(channel_dropout) == 1
+                else random.uniform(channel_dropout[0], channel_dropout[1])
+            )
+        else:
+            channel_mask_ratio = self.config.channel_mask_ratio
 
         target = self.decoder.forward_target(optical)
         latent, channel_mask, pos_mask, ids_restore, encoder_hidden_states = self.forward_encoder(
