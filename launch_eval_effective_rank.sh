@@ -9,7 +9,10 @@ DATA_DIR=/datasets/geospatial
 
 # Space-separated lists; leave empty ("") to use eval_effective_rank.py's defaults (all models
 # except dinov3 / all 5 README downstream datasets / all 4 native gen_task settings).
-MODELS=""
+# channelvit is excluded here: its load_pretrained_weights() is a no-op in this repo (see
+# eval_effective_rank.py's known-limitations notes), so it only ever runs randomly initialized
+# -- not a trained checkpoint worth comparing against the others.
+MODELS="lessvit dofa specvit hyperfree spatsigma"
 DATASETS=""
 GEN_TASKS=""
 

@@ -7,10 +7,17 @@ across the full generalization grid -- no retraining, one checkpoint, repeated e
   * real alternative-sensor test sets sharing enmap_cdl's CDL label scheme: desis, eo1h (2)
 
 desis/eo1h only apply when --dataset_name is enmap_cdl (desis_cdl/eo1_cdl are the only real
-sensor datasets with CDL labels) -- their ordinal class indices are each dataset's OWN
-best-effort CDL-code ordering (see EO1CDLDataset/DESISCDLDataset), which does not necessarily
-line up 1:1 with enmap_cdl's own ordering beyond the first few common codes; treat those two
-rows as a coarse generalization signal, not an exact per-class comparison.
+sensor datasets with CDL labels). EO1CDLDataset/DESISCDLDataset each build their OWN raw-CDL
+-code -> ordinal-index mapping from their own (different) `classes` list, e.g. EO1's ordinal
+index 6 is CDL code 41 while enmap_cdl's ordinal index 6 is CDL code 45 -- left alone, the
+labels handed to the metric wouldn't correspond to the same class as the logit channel the
+checkpoint's head produces at that index. build_eval_dataset() below overrides each real
+dataset's `.ordinal_map` with one built from enmap_cdl's OWN `classes` ordering (see
+build_ordinal_map()), so ordinal index i always means "the i-th class in the anchor dataset's
+`classes` list", matching what the checkpoint was actually fine-tuned to predict. Any CDL code
+desis/eo1h's test masks contain that enmap_cdl's `classes` doesn't recognize becomes
+ignore_index -- the checkpoint has no output for a class it was never trained on, so those
+pixels can't be scored either way.
 
 Writes a tidy CSV: model, dataset, gen_task, n_bands, task_type, metric_name, value, lr, reason.
 
@@ -31,6 +38,7 @@ from functools import partial
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from torchgeo.datasets.cdl import CDL
 from transformers import EvalPrediction
 
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn
@@ -105,6 +113,19 @@ def build_sensor_transform_args(dataset_name, gen_task, sensor_stats_cache, pret
     return sensor_stats_cache[gen_task]
 
 
+def build_ordinal_map(classes, ignore_index):
+    """Raw-CDL-code -> ordinal-index tensor, matching EnMAPCDLDataset/EO1CDLDataset/
+    DESISCDLDataset's own __init__ convention (code 0 sorts last, everything else keeps
+    `classes`' order; any code not in `classes` maps to ignore_index) -- but computed from a
+    plain `classes` list with no `self` mutation, so it can build a DIFFERENT dataset's own
+    label scheme onto a real-sensor dataset instance (see build_eval_dataset)."""
+    ordinal_map = torch.zeros(max(CDL.cmap.keys()) + 1, dtype=torch.long) + ignore_index
+    ordered = [c for c in classes if c != 0] + [0]
+    for v, k in enumerate(ordered):
+        ordinal_map[k] = v
+    return ordinal_map
+
+
 def _highest_step_checkpoint(run_dir):
     candidates = glob.glob(os.path.join(run_dir, "checkpoint-*"))
     if not candidates:
@@ -176,6 +197,13 @@ def build_eval_dataset(args, dataset_name, gen_task, task_type, sensor_stats_cac
         # subsetting assumes EnMAP's 202-band grid and doesn't apply to these real sensors' own
         # bands; None skips it entirely and returns the full native band set, unmodified.
         dataset = get_enmap_downstream_dataset(ds_args, eval_transform, eval_transform, gen_task=None)
+
+        # Realign labels to the ANCHOR (training) dataset's own ordinal scheme -- see module
+        # docstring. Overriding .ordinal_map after construction (but before any __getitem__
+        # call) is safe: __init__ has already run and __getitem__ reads self.ordinal_map fresh
+        # every call, so this is the only place that needs to change.
+        anchor_cls = ENMAP_DATASET[dataset_name]
+        dataset["test"].ordinal_map = build_ordinal_map(anchor_cls.classes, anchor_cls.metadata["ignore_index"])
         return dataset["test"]
 
     metadata = get_enmap_downstream_metadata(dataset_name)
