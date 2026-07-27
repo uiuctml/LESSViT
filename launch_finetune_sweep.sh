@@ -1,18 +1,33 @@
-ROOT_DIR="/home/haozhesi/GeospatialFM"
+# NOTE: /home/haozhesi/GeospatialFM is a stale, separate checkout that predates EnMAP support
+# (its finetune/args.py has no --gen_task/--quad_tile_train) -- every other launch_*.sh script
+# in this repo (launch_eval_cross_sensor.sh, launch_finetune_ablation_base.sh, ...) points at
+# /home/haozhesi/LESSViT instead; this one must match or --gen_task/--dataset_name enmap_cdl
+# fail to parse.
+ROOT_DIR="/home/haozhesi/LESSViT"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # Backbone to finetune. One of: lessvit | specvit | dinov3 | dofa | spatsigma | channelvit | hyperfree
-MODEL_NAME=hyperfree
+MODEL_NAME=lessvit
 
 # Directory containing the pretrained checkpoint(s) for $MODEL_NAME. See launch_finetune.sh
 # for the full explanation of this convention.
-PRETRAINED_MODEL_PATH=./results/models/${MODEL_NAME}
+PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit/LESSVIT_S_b4_d4_r4
 
 DATASET_NAME=enmap_cdl
 TASK_TYPE=segmentation
 GEN_TASK=id
-DATA_DIR=/datasets/disk2/geospatial/enmap/enmap
+DATA_DIR=/datasets/geospatial/
+# Only needed to compute SRF std stats for the prisma_like/sentinel2_like generalization
+# eval below (cached under SRF_CACHE_DIR afterward); irrelevant to training itself.
+PRETRAIN_DATA_DIR=/datasets/geospatial/enmap/enmap
+
+# No EnMAP-family dataset's metadata carries a "size" key, so finetune.py's
+# `args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size` KeyErrors
+# unless --crop_size is passed explicitly. 128 is the native tile size shared by all 5 README
+# downstream EnMAP benchmarks (see launch_finetune_ablation_base.sh's identical note, and
+# eval_cross_sensor.py/eval_quad_split.py's hardcoded 128/64*2).
+CROP_SIZE=128
 
 # Appendix D.1: "a comprehensive search over a wide range of learning rates ... applied to
 # all models and benchmark datasets ... we report the best results achieved across all
@@ -46,6 +61,8 @@ for LR in "${LEARNING_RATES[@]}"; do
         --logging_dir ./results/logs \
         --wandb_dir ./results/ \
         --report_to wandb \
+        --crop_size ${CROP_SIZE} \
+        --return_dict \
         --per_device_train_batch_size 128 \
         --gradient_accumulation_steps 2 \
         --per_device_eval_batch_size 128 \
@@ -54,6 +71,7 @@ for LR in "${LEARNING_RATES[@]}"; do
         --adam_beta1 0.9 \
         --adam_beta2 0.999 \
         --weight_decay 0.01 \
+        --max_grad_norm 1.0 \
         --warmup_ratio 0.05 \
         --lr_scheduler_type cosine \
         --random_rotation \
@@ -96,3 +114,28 @@ with open(test_path) as f:
     print(f"Test-set results ({test_path}):")
     print(json.dumps(json.load(f), indent=2))
 PY
+
+# Take that same best-on-val checkpoint and report it across the full generalization grid --
+# no retraining, one eval pass per gen_task: native id/ood_a/ood_full/ood_complement (4),
+# SRF-resampled prisma_like/sentinel2_like (2), and (only when DATASET_NAME=enmap_cdl) the real
+# desis/eo1h alternative-sensor test sets (2). See eval_generalization.py's module docstring for
+# the desis/eo1h class-ordinal caveat. The first sensor-config run computes SRF std stats from
+# PRETRAIN_DATA_DIR (slow, one-time); later runs reuse SRF_CACHE_DIR.
+SRF_CACHE_DIR=./results/srf_stats
+GENERALIZATION_CSV=./results/generalization_eval.csv
+N_PATCHES=2000
+EVAL_BATCH_SIZE=32
+
+python3 GeospatialFM/finetune/eval_generalization.py \
+    --data_dir ${DATA_DIR} \
+    --pretrain_data_dir ${PRETRAIN_DATA_DIR} \
+    --results_dir ./results \
+    --srf_cache_dir ${SRF_CACHE_DIR} \
+    --output_csv ${GENERALIZATION_CSV} \
+    --model_name ${MODEL_NAME} \
+    --dataset_name ${DATASET_NAME} \
+    --task_type ${TASK_TYPE} \
+    --gen_task_train ${GEN_TASK} \
+    --crop_size ${CROP_SIZE} \
+    --n_patches ${N_PATCHES} \
+    --batch_size ${EVAL_BATCH_SIZE}

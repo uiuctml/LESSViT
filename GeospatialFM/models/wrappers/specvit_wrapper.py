@@ -42,8 +42,14 @@ class SpecViTEncoder(SpecVisionTransformer):
         return features
     
     def load_pretrained_weights(self, pretrained_model_dir):
-        pretrained_model_paths = glob.glob(os.path.join(pretrained_model_dir, "*.bin")) + \
-            glob.glob(os.path.join(pretrained_model_dir, "*.pth"))
+        # HF Trainer output dirs also contain a training_args.bin (a pickled
+        # TrainingArguments, not model weights) alongside pytorch_model.bin; exclude it so
+        # sort()[-1] can't pick it over the real checkpoint file.
+        pretrained_model_paths = [
+            p for p in glob.glob(os.path.join(pretrained_model_dir, "*.bin")) + \
+                glob.glob(os.path.join(pretrained_model_dir, "*.pth"))
+            if os.path.basename(p) != "training_args.bin"
+        ]
         pretrained_model_paths.sort()
         pretrained_model_path = pretrained_model_paths[-1]
 

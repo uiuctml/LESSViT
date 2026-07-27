@@ -47,9 +47,11 @@ Usage:
 """
 import argparse
 import csv
+import glob
 import logging
 import os
 import random
+import re
 from collections import defaultdict
 from functools import partial
 
@@ -78,6 +80,13 @@ GEN_TASK_TO_PAPER_NAME = {
 # Same restriction eval_cross_sensor.py encodes: these baselines' patch embed has a channel count
 # baked in at construction time and can't ingest an arbitrary band set.
 FIXED_CHANNEL_MODELS = {"channelvit": 202}
+
+# ChannelViT emits one token per (channel, patch) pair, so its self-attention cost is
+# quadratic in n_bands*num_patches -- at 202 channels (the only gen_task it ever actually
+# runs, per FIXED_CHANNEL_MODELS) x 64 patches/128px-crop, --batch_size 32 tries to allocate
+# ~239GiB. Every other wrapped encoder here tokenizes per-patch (channel count folds into a
+# per-band embedding, not the token count), so this cap is ChannelViT-specific.
+MODEL_BATCH_SIZE_CAP = {"channelvit": 2}
 
 # Models with no accessible pre-head pooled representation through the shared encoder interface.
 NO_PRE_HEAD_MODELS = {
@@ -180,6 +189,50 @@ def build_frozen_model(model_name, arch_ns):
     return LESSWithProjection(config)
 
 
+# Pre-"arms experiment" (commit 8e09169) arm-A checkpoints nest low_dim_pool/channel_norm/
+# spatial_norm/attn directly under `encoder.blocks.{i}.`; the refactor moved LowRankBlock's
+# attention machinery one level deeper, under `encoder.blocks.{i}.attn.` (see attention_ops.py's
+# build_attention/LowRankBlock), so the same arm-A weights now live at
+# `encoder.blocks.{i}.attn.{low_dim_pool,channel_norm,spatial_norm,attn}.*`. This is a pure
+# rename -- LESSAttention's forward is byte-identical to the pre-refactor LowRankBlock.forward
+# (see attention_ops.py's LESSAttention docstring) -- so remapping the checkpoint's keys and
+# loading into today's --attn_type less encoder reproduces the original arm-A model exactly.
+_LEGACY_ARM_A_KEY_RE = re.compile(
+    r"^(encoder\.blocks\.\d+\.)(low_dim_pool\.|channel_norm\.|spatial_norm\.|attn\.)"
+)
+
+
+def load_lessvit_encoder(model, ckpt_dir):
+    """Load a LESSViT encoder checkpoint, tolerating both the current key layout and the
+    legacy arm-A layout described above (tried only as a fallback, per-key, so checkpoints
+    saved under the current layout are loaded byte-for-byte as before)."""
+    from safetensors import safe_open
+
+    safetensors_paths = sorted(glob.glob(os.path.join(ckpt_dir, "*.safetensors")))
+    if not safetensors_paths:
+        raise FileNotFoundError(f"No .safetensors file found in {ckpt_dir}")
+
+    model_state = model.state_dict()
+    with safe_open(safetensors_paths[-1], framework="pt", device="cpu") as f:
+        for key in f.keys():
+            if not key.startswith("encoder.") or key == "encoder.perception_field_mask":
+                continue
+            target_key = key
+            if target_key not in model_state:
+                legacy_match = _LEGACY_ARM_A_KEY_RE.match(key)
+                if legacy_match:
+                    target_key = (
+                        legacy_match.group(1) + "attn." + legacy_match.group(2)
+                        + key[legacy_match.end():]
+                    )
+            if target_key not in model_state:
+                raise KeyError(
+                    f"Checkpoint key {key!r} has no matching LESSViT encoder parameter "
+                    f"(also tried the legacy-arm-A remap {target_key!r})"
+                )
+            model_state[target_key].copy_(f.get_tensor(key))
+
+
 @torch.no_grad()
 def extract_pooled_features(model, batch, device):
     """Mirrors LESSWithProjection.forward (downstream_models.py) up to, but not including, the
@@ -202,7 +255,7 @@ def extract_pooled_features(model, batch, device):
     return pooled.float().cpu()
 
 
-def extract_feature_matrix(model, args, by_ds_split, gen_task, device):
+def extract_feature_matrix(model, args, by_ds_split, gen_task, device, model_name=None):
     # normalize_wv must reflect whether *this specific model* uses RoPE
     # (RopePositionChannelEmbedding assumes optical_channel_wv already sits in [0,1] --
     # pos_chan_embed.py's `coords_c = 2*optical_channel_wv - 1`). Only SpatialSpectralLowRankViTEncoder
@@ -210,6 +263,7 @@ def extract_feature_matrix(model, args, by_ds_split, gen_task, device):
     # backbones a wholly different (/1000, micrometers-ish) convention via `wave_list`, unrelated
     # to this normalization and untouched here.
     use_rope = isinstance(model.encoder, SpatialSpectralLowRankViTEncoder) and getattr(model.config, "use_rope_embed", False)
+    batch_size = min(args.batch_size, MODEL_BATCH_SIZE_CAP.get(model_name, args.batch_size))
 
     feats = []
     for (dataset_name, split), local_indices in by_ds_split.items():
@@ -228,7 +282,7 @@ def extract_feature_matrix(model, args, by_ds_split, gen_task, device):
         subset = Subset(dataset, local_indices)
         collate_fn = partial(modal_specific_collate_fn, modal="optical", normalize_wv=use_rope, wv_min=wv_min, wv_max=wv_max)
         loader = DataLoader(
-            subset, batch_size=args.batch_size, shuffle=False,
+            subset, batch_size=batch_size, shuffle=False,
             num_workers=args.dataloader_num_workers, collate_fn=collate_fn,
         )
         for batch in loader:
@@ -320,7 +374,10 @@ def main(args):
                     emit(model_name, gen_task, reason="checkpoint_not_found")
                 continue
             try:
-                model.load_pretrained_encoder(ckpt_dir)
+                if model_name == "lessvit":
+                    load_lessvit_encoder(model, ckpt_dir)
+                else:
+                    model.load_pretrained_encoder(ckpt_dir)
                 loaded = True
             except Exception as e:
                 logger.exception("Failed to load checkpoint for %s from %s", model_name, ckpt_dir)
@@ -337,7 +394,7 @@ def main(args):
                      reason=f"fixed input channel count ({fixed_n_bands}) != n_bands ({n_bands})")
                 continue
             try:
-                X = extract_feature_matrix(model, args, by_ds_split, gen_task, device)
+                X = extract_feature_matrix(model, args, by_ds_split, gen_task, device, model_name=model_name)
                 metrics = effective_rank_metrics(X)
             except Exception as e:
                 logger.exception("Runtime failure for model=%s gen_task=%s", model_name, gen_task)
