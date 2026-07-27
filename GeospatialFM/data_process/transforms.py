@@ -57,6 +57,49 @@ def CenterCropAll(optical=None, radar=None, label=None, crop_size=None):
     label = None if label is None else TF.center_crop(label, crop_size)
     return optical, radar, label
 
+# Fixed (top, left) offsets for the four non-overlapping crop_size x crop_size
+# quadrants of a 2*crop_size x 2*crop_size native image, in a fixed order (top-left,
+# top-right, bottom-left, bottom-right). Single source of truth: quad-split eval
+# scripts must stitch quadrant predictions back together using this exact order, so
+# split and stitch can never drift apart.
+def quad_crop_offsets(crop_size):
+    return [(0, 0), (0, crop_size), (crop_size, 0), (crop_size, crop_size)]
+
+def QuadCropAll(optical=None, radar=None, crop_size=None):
+    """Split optical/radar into the four fixed non-overlapping crop_size x crop_size
+    quadrants of a native 2*crop_size x 2*crop_size image (see quad_crop_offsets),
+    stacking them into a [C, 4, crop_size, crop_size] tensor per modality -- channel
+    axis stays dim 0 (quad axis inserted right after it) rather than stacking the
+    quadrants as a new leading dim, because every enmap_*.py dataset's __getitem__
+    indexes `optical[SELECTED_CHANNEL_IDX_B, :, :]` (and `optical.shape[0]` for the
+    channel count) on the transform's *output*, and that only stays correct if the
+    channel axis is still dim 0 afterwards. Unlike RandomCropAll/CenterCropAll, this
+    never touches `label` -- quad-split eval keeps the label at full native
+    resolution and stitches quadrant *predictions* back together instead (see
+    eval_quad_split.py), rather than cropping the label too.
+    """
+    def split(img):
+        if img is None:
+            return None
+        return torch.stack([TF.crop(img, top, left, crop_size, crop_size)
+                             for top, left in quad_crop_offsets(crop_size)], dim=1)
+    return split(optical), split(radar)
+
+def FixedQuadCropAll(optical=None, radar=None, label=None, crop_size=None, quadrant_idx=None):
+    """Crop optical/radar/label to ONE specific fixed quadrant (quadrant_idx in
+    0..3, same order as quad_crop_offsets/QuadCropAll) of a native
+    2*crop_size x 2*crop_size image. Unlike QuadCropAll (all 4 quadrants stacked,
+    for eval), this returns a single crop_size x crop_size crop per modality --
+    used by QuadTiledDataset to give each of an image's 4 quadrants its own
+    training sample (systematic tiling) instead of one RandomCropAll draw per
+    image per epoch.
+    """
+    top, left = quad_crop_offsets(crop_size)[quadrant_idx]
+    optical = None if optical is None else TF.crop(optical, top, left, crop_size, crop_size)
+    radar = None if radar is None else TF.crop(radar, top, left, crop_size, crop_size)
+    label = None if label is None else TF.crop(label, top, left, crop_size, crop_size)
+    return optical, radar, label
+
 def HorizontalFlipAll(optical=None, radar=None, label=None):
     optical = None if optical is None else TF.hflip(optical)
     radar = None if radar is None else TF.hflip(radar)
@@ -156,7 +199,31 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     
     return optical, radar, label, spatial_resolution
 
-def segmentation_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True, 
+def segmentation_quad_eval_transform_one_sample(optical, radar, label, spatial_resolution, crop_size=None,
+                                                 optical_mean=None, optical_std=None, radar_mean=None, radar_std=None,
+                                                 optical_srf_matrix=None):
+    """Eval-only quad-split variant of segmentation_transform_one_sample: normalizes
+    optical/radar the same way, but splits them into four crop_size x crop_size
+    quadrants (QuadCropAll) instead of one Random/CenterCropAll crop, and leaves
+    `label` uncropped at full native resolution (the eval script stitches quadrant
+    *predictions* back together and compares against this full label directly, so
+    the label itself never needs quad-splitting). No train-time augmentation.
+    """
+    if optical is not None and not isinstance(optical, torch.Tensor):
+        optical = torch.tensor(optical, dtype=torch.float32)
+    if radar is not None and not isinstance(radar, torch.Tensor):
+        radar = torch.tensor(radar, dtype=torch.float32)
+    if not isinstance(label, torch.Tensor):
+        label = torch.tensor(label, dtype=torch.int64)
+
+    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std, optical_srf_matrix)
+
+    if crop_size is not None:
+        optical, radar = QuadCropAll(optical, radar, crop_size)
+
+    return optical, radar, label, spatial_resolution
+
+def segmentation_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True,
                            optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, random_crop=False):
     optical = example.get('optical', None)
     radar = example.get('radar', None)
@@ -241,7 +308,24 @@ def classification_transform_one_sample(optical, radar, spatial_resolution, crop
         
     return optical, radar, spatial_resolution
 
-def classification_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True, 
+def classification_quad_eval_transform_one_sample(optical, radar, spatial_resolution, crop_size=None,
+                                                   optical_mean=None, optical_std=None, radar_mean=None, radar_std=None,
+                                                   optical_srf_matrix=None):
+    """Eval-only quad-split variant of classification_transform_one_sample -- see
+    segmentation_quad_eval_transform_one_sample's docstring; classification/multilabel
+    has no spatial label to worry about, so this just splits optical/radar.
+    """
+    optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
+    radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
+
+    optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std, optical_srf_matrix)
+
+    if crop_size is not None:
+        optical, radar = QuadCropAll(optical, radar, crop_size)
+
+    return optical, radar, spatial_resolution
+
+def classification_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True,
                              optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
     optical = example.get('optical', None)
     radar = example.get('radar', None)

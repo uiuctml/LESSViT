@@ -23,6 +23,11 @@ def parse_args(sys_args=None):
     parser.add_argument("--crop_size", type=int, default=None, help="Crop size for training")
     parser.add_argument("--scale", type=float, default=None, help="Scale for training")
     parser.add_argument("--random_rotation", action="store_true", help="Whether to use random rotation for training")
+    parser.add_argument("--quad_tile_train", action="store_true",
+                        help="Train on the 4 fixed non-overlapping crop_size quadrants of each native image "
+                             "(every corner systematically covered every epoch, 4x the train samples/steps) "
+                             "instead of one RandomCropAll draw per image per epoch. Opt-in, enmap datasets only; "
+                             "does not change val/test, which keep their existing CenterCropAll/quad-split eval.")
     parser.add_argument("--train_frac", type=float, default=1.0, help="Fraction of train set to be used in training")
     parser.add_argument("--val_frac", type=float, default=1.0, help="Fraction of val set to be used in evaluation")
     parser.add_argument("--test_frac", type=float, default=1.0, help="Fraction of test set to be used in testing")

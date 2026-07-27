@@ -203,12 +203,22 @@ def extract_pooled_features(model, batch, device):
 
 
 def extract_feature_matrix(model, args, by_ds_split, gen_task, device):
+    # normalize_wv must reflect whether *this specific model* uses RoPE
+    # (RopePositionChannelEmbedding assumes optical_channel_wv already sits in [0,1] --
+    # pos_chan_embed.py's `coords_c = 2*optical_channel_wv - 1`). Only SpatialSpectralLowRankViTEncoder
+    # (LESSViT) uses this convention -- the else branch in extract_pooled_features feeds other
+    # backbones a wholly different (/1000, micrometers-ish) convention via `wave_list`, unrelated
+    # to this normalization and untouched here.
+    use_rope = isinstance(model.encoder, SpatialSpectralLowRankViTEncoder) and getattr(model.config, "use_rope_embed", False)
+
     feats = []
     for (dataset_name, split), local_indices in by_ds_split.items():
         dataset_cls = ENMAP_DATASET[dataset_name]
         metadata = dataset_cls.metadata
         task_type = DATASET_TASK_TYPE[dataset_name]
         optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+        channel_wv = np.array(metadata["s2c"]["channel_wv"])
+        wv_min, wv_max = channel_wv.min(), channel_wv.max()
 
         _, eval_transform = get_enmap_transform(
             task_type, crop_size=args.crop_size, scale=None, random_rotation=False,
@@ -216,7 +226,7 @@ def extract_feature_matrix(model, args, by_ds_split, gen_task, device):
         )
         dataset = dataset_cls(root=args.data_dir, split=split, transform=eval_transform, gen_task=gen_task)
         subset = Subset(dataset, local_indices)
-        collate_fn = partial(modal_specific_collate_fn, modal="optical")
+        collate_fn = partial(modal_specific_collate_fn, modal="optical", normalize_wv=use_rope, wv_min=wv_min, wv_max=wv_max)
         loader = DataLoader(
             subset, batch_size=args.batch_size, shuffle=False,
             num_workers=args.dataloader_num_workers, collate_fn=collate_fn,

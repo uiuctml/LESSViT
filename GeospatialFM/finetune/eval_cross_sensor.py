@@ -21,6 +21,7 @@ import logging
 import os
 from functools import partial
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchmetrics.classification import MulticlassJaccardIndex
@@ -138,8 +139,14 @@ def build_eval_dataset(args, dataset_name, gen_task, sensor_stats_cache):
 
 
 @torch.no_grad()
-def evaluate(model, dataset, num_classes, ignore_index, batch_size, device):
-    collate_fn = partial(modal_specific_collate_fn, modal="optical")
+def evaluate(model, dataset, num_classes, ignore_index, batch_size, device, normalize_wv=False, wv_min=None, wv_max=None):
+    # normalize_wv must reflect whether *this specific model* uses RoPE
+    # (RopePositionChannelEmbedding assumes optical_channel_wv already sits in [0,1] --
+    # pos_chan_embed.py's `coords_c = 2*optical_channel_wv - 1`), not a blanket setting --
+    # this script sweeps multiple baseline architectures, most of which don't use RoPE at
+    # all and may expect raw wavelengths or nothing. See main()'s
+    # getattr(model.config, "use_rope_embed", False) check.
+    collate_fn = partial(modal_specific_collate_fn, modal="optical", normalize_wv=normalize_wv, wv_min=wv_min, wv_max=wv_max)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     metric = MulticlassJaccardIndex(num_classes=num_classes, average="micro", ignore_index=ignore_index).to(device)
 
@@ -193,6 +200,8 @@ def main(args):
 
             metadata = get_enmap_downstream_metadata(dataset_name)
             num_classes, ignore_index = metadata["num_classes"], metadata["ignore_index"]
+            channel_wv = np.array(metadata["s2c"]["channel_wv"])
+            wv_min, wv_max = channel_wv.min(), channel_wv.max()
 
             model = None
             sanity_values = {}
@@ -221,7 +230,9 @@ def main(args):
                         ).to(device)
 
                     dataset, _ = build_eval_dataset(args, dataset_name, gen_task, sensor_stats_cache)
-                    iou = evaluate(model, dataset, num_classes, ignore_index, args.batch_size, device)
+                    use_rope = getattr(model.config, "use_rope_embed", False)
+                    iou = evaluate(model, dataset, num_classes, ignore_index, args.batch_size, device,
+                                   normalize_wv=use_rope, wv_min=wv_min, wv_max=wv_max)
                 except Exception as e:
                     logger.exception(
                         "Runtime failure evaluating model=%s dataset=%s gen_task=%s (n_bands=%d)",

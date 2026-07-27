@@ -26,6 +26,7 @@ from GeospatialFM.datasets.enmap import get_enmap_downstream_metadata, get_enmap
 from GeospatialFM.datasets.enmap.sensors import SENSOR_CONFIGS, load_sensor_config, compute_target_stats
 from GeospatialFM.data_process.transforms import get_transform, get_enmap_transform
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, linear_probe_collate_fn
+from GeospatialFM.data_process.quad_tiled_dataset import QuadTiledDataset
 from GeospatialFM.data_process.srf import build_srf_matrix, summarize_srf
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
@@ -108,14 +109,22 @@ def main(args):
         try: # for sentinel-2 and sentinel-1
             optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
             radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+            channel_wv = np.array(metadata["s2c"]["channel_wv"])
+            wv_min, wv_max = channel_wv.min(), channel_wv.max()
         except: # for landsat and other datasets
             optical_mean, optical_std = metadata['mean'], metadata['std']
             radar_mean, radar_std = None, None
+            wv_min, wv_max = None, None
 
         # Training always stays on the native C120_VNIR+ subset regardless of --gen_task (see
         # each EnMAP dataset's __getitem__), so train_transform always normalizes with native
         # EnMAP stats and never applies SRF resampling.
-        train_transform, _ = get_enmap_transform(args.task_type, args.crop_size, args.scale, args.random_rotation,
+        # --quad_tile_train: build train_transform with crop_size=None (normalize/flip/rotate
+        # but skip crop -- see segmentation_transform_one_sample/classification_transform_one_sample's
+        # `if crop_size is not None` gate), so QuadTiledDataset can crop each of the 4 fixed
+        # quadrants itself below instead of RandomCropAll picking one random crop.
+        train_crop_size = None if args.quad_tile_train else args.crop_size
+        train_transform, _ = get_enmap_transform(args.task_type, train_crop_size, args.scale, args.random_rotation,
                                                     optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
 
         if args.gen_task in SENSOR_CONFIGS:
@@ -137,16 +146,24 @@ def main(args):
                                                     optical_srf_matrix=srf_matrix)
 
         dataset = get_enmap_downstream_dataset(args, train_transform, eval_transform, args.gen_task)
+        if args.quad_tile_train:
+            dataset['train'] = QuadTiledDataset(
+                dataset['train'], crop_size=args.crop_size,
+                has_spatial_label=(args.task_type == "segmentation"),
+            )
     else:
         metadata = get_metadata(args.dataset_name, args.dataset_version)
         args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
         try: # for sentinel-2 and sentinel-1
             optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
             radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+            channel_wv = np.array(metadata["s2c"]["channel_wv"])
+            wv_min, wv_max = channel_wv.min(), channel_wv.max()
         except: # for landsat and other datasets
             optical_mean, optical_std = metadata['mean'], metadata['std']
             radar_mean, radar_std = None, None
-        train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+            wv_min, wv_max = None, None
+        train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation,
                                                     optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
     
         dataset = get_dataset(args, train_transform, eval_transform)
@@ -180,7 +197,19 @@ def main(args):
         collate_fn = linear_probe_collate_fn
     else:
         model_init = partial(model_init_template, lp=False)
-        collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
+        # normalize_wv tied to --use_rope_embed, matching scripts/train.py's convention --
+        # RopePositionChannelEmbedding assumes optical_channel_wv already sits in [0,1]
+        # (pos_chan_embed.py's `coords_c = 2*optical_channel_wv - 1`), so a RoPE checkpoint
+        # fine-tuned/evaluated without this would receive raw nm wavelengths (~400-2450)
+        # instead of the [0,1] range it was pretrained on -- silently wrong, not a crash.
+        # wv_min/wv_max come from this dataset's own full native channel_wv range (not the
+        # collate function's stale hardcoded defaults, which don't match this dataset family)
+        # so they're correct regardless of --enmap_subset/--gen_task narrowing which bands
+        # actually flow through per sample.
+        wv_kwargs = {"normalize_wv": args.use_rope_embed}
+        if wv_min is not None:
+            wv_kwargs.update(wv_min=wv_min, wv_max=wv_max)
+        collate_fn = partial(modal_specific_collate_fn, modal=args.modal, **wv_kwargs)
     
     # get loss function and metric
     ignore_index = metadata.get("ignore_index", 255)
