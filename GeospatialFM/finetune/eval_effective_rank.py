@@ -47,11 +47,9 @@ Usage:
 """
 import argparse
 import csv
-import glob
 import logging
 import os
 import random
-import re
 from collections import defaultdict
 from functools import partial
 
@@ -187,50 +185,6 @@ def build_arch_namespace(args, model_name):
 def build_frozen_model(model_name, arch_ns):
     config = LESSWithProjectionConfig(num_labels=2, **vars(arch_ns))
     return LESSWithProjection(config)
-
-
-# Pre-"arms experiment" (commit 8e09169) arm-A checkpoints nest low_dim_pool/channel_norm/
-# spatial_norm/attn directly under `encoder.blocks.{i}.`; the refactor moved LowRankBlock's
-# attention machinery one level deeper, under `encoder.blocks.{i}.attn.` (see attention_ops.py's
-# build_attention/LowRankBlock), so the same arm-A weights now live at
-# `encoder.blocks.{i}.attn.{low_dim_pool,channel_norm,spatial_norm,attn}.*`. This is a pure
-# rename -- LESSAttention's forward is byte-identical to the pre-refactor LowRankBlock.forward
-# (see attention_ops.py's LESSAttention docstring) -- so remapping the checkpoint's keys and
-# loading into today's --attn_type less encoder reproduces the original arm-A model exactly.
-_LEGACY_ARM_A_KEY_RE = re.compile(
-    r"^(encoder\.blocks\.\d+\.)(low_dim_pool\.|channel_norm\.|spatial_norm\.|attn\.)"
-)
-
-
-def load_lessvit_encoder(model, ckpt_dir):
-    """Load a LESSViT encoder checkpoint, tolerating both the current key layout and the
-    legacy arm-A layout described above (tried only as a fallback, per-key, so checkpoints
-    saved under the current layout are loaded byte-for-byte as before)."""
-    from safetensors import safe_open
-
-    safetensors_paths = sorted(glob.glob(os.path.join(ckpt_dir, "*.safetensors")))
-    if not safetensors_paths:
-        raise FileNotFoundError(f"No .safetensors file found in {ckpt_dir}")
-
-    model_state = model.state_dict()
-    with safe_open(safetensors_paths[-1], framework="pt", device="cpu") as f:
-        for key in f.keys():
-            if not key.startswith("encoder.") or key == "encoder.perception_field_mask":
-                continue
-            target_key = key
-            if target_key not in model_state:
-                legacy_match = _LEGACY_ARM_A_KEY_RE.match(key)
-                if legacy_match:
-                    target_key = (
-                        legacy_match.group(1) + "attn." + legacy_match.group(2)
-                        + key[legacy_match.end():]
-                    )
-            if target_key not in model_state:
-                raise KeyError(
-                    f"Checkpoint key {key!r} has no matching LESSViT encoder parameter "
-                    f"(also tried the legacy-arm-A remap {target_key!r})"
-                )
-            model_state[target_key].copy_(f.get_tensor(key))
 
 
 @torch.no_grad()
@@ -374,10 +328,7 @@ def main(args):
                     emit(model_name, gen_task, reason="checkpoint_not_found")
                 continue
             try:
-                if model_name == "lessvit":
-                    load_lessvit_encoder(model, ckpt_dir)
-                else:
-                    model.load_pretrained_encoder(ckpt_dir)
+                model.load_pretrained_encoder(ckpt_dir)
                 loaded = True
             except Exception as e:
                 logger.exception("Failed to load checkpoint for %s from %s", model_name, ckpt_dir)

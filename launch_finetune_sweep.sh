@@ -12,7 +12,24 @@ MODEL_NAME=lessvit
 
 # Directory containing the pretrained checkpoint(s) for $MODEL_NAME. See launch_finetune.sh
 # for the full explanation of this convention.
-PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit/LESSVIT_S_b4_d4_r4
+# PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit/LESSVIT_S_b4_d4_r4
+PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit
+
+# LESSViT architecture -- only meaningful when MODEL_NAME=lessvit (get_encoder() ignores these
+# for every other backbone), but MUST match whatever checkpoint PRETRAINED_MODEL_PATH points
+# lessvit at, or finetune.py's initial model_init() either KeyErrors (missing key, e.g. ls1.gamma
+# when INIT_VALUES is unset) or RuntimeErrors on a shape mismatch (e.g. channel_branch.qk sized
+# from the wrong CHANNEL_EMBED_DIMS_PER_HEAD) while loading the pretrained encoder. Defaults
+# below are ViT-B/rank=1/crop=128, matching /project/geospatial/baseline_models/lessvit (run
+# name LESSVIT_b2_d8_r1 -- see launch_train.sh's --run_name; channel_embed_dims_per_head=2
+# there is the "b2" -- and launch_eval_effective_rank.sh's identical note).
+EMBED_DIM=768
+DEPTH=12
+NUM_HEADS=12
+CHANNEL_EMBED_DIMS_PER_HEAD=2
+RANK=1
+ATTN_TYPE=less
+INIT_VALUES=1.0
 
 DATASET_NAME=enmap_cdl
 TASK_TYPE=segmentation
@@ -34,7 +51,8 @@ CROP_SIZE=128
 # learning rates", selected on the validation set. This is a plain grid search, run one full
 # fine-tune per candidate LR -- not the same thing as the --use_optuna path in finetune.py,
 # which does a TPE search over a different (wider) candidate set instead of this exact grid.
-LEARNING_RATES=(8e-5 1e-4 3e-4 5e-4 8e-4)
+# LEARNING_RATES=(8e-5 1e-4 3e-4 5e-4 8e-4)
+LEARNING_RATES=(5e-4)
 
 # finetune.py never overrides Trainer.evaluate()'s default metric_key_prefix, so both
 # val_results.json and test_results.json end up with "eval_"-prefixed keys regardless of
@@ -62,9 +80,17 @@ for LR in "${LEARNING_RATES[@]}"; do
         --wandb_dir ./results/ \
         --report_to wandb \
         --crop_size ${CROP_SIZE} \
+        --embed_dim ${EMBED_DIM} \
+        --depth ${DEPTH} \
+        --num_heads ${NUM_HEADS} \
+        --channel_embed_dims_per_head ${CHANNEL_EMBED_DIMS_PER_HEAD} \
+        --rank ${RANK} \
+        --attn_type ${ATTN_TYPE} \
+        --init_values ${INIT_VALUES} \
+        --use_rope_embed \
         --return_dict \
-        --per_device_train_batch_size 128 \
-        --gradient_accumulation_steps 2 \
+        --per_device_train_batch_size 8 \
+        --gradient_accumulation_steps 32 \
         --per_device_eval_batch_size 128 \
         --num_train_epochs 10 \
         --learning_rate ${LR} \

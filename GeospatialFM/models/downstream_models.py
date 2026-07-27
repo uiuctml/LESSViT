@@ -12,12 +12,25 @@ from .conv_head import ConvHead, MoEConvHead
 import math
 import glob
 import os
+import re
 
 from .wrappers.specvit_wrapper import SpecViTEncoder, SpecViTConfig
 from .registry import ENCODER_CONFIGS, ENCODER_MODELS
 from .wrappers.spatsigma_wrapper import SpatSigmaMixin
 
 logger = logging.getLogger(__name__)
+
+# Pre-"arms experiment" (commit 8e09169) arm-A checkpoints nest low_dim_pool/channel_norm/
+# spatial_norm/attn directly under `encoder.blocks.{i}.`; the refactor moved LowRankBlock's
+# attention machinery one level deeper, under `encoder.blocks.{i}.attn.` (see attention_ops.py's
+# build_attention/LowRankBlock), so the same arm-A weights now live at
+# `encoder.blocks.{i}.attn.{low_dim_pool,channel_norm,spatial_norm,attn}.*`. This is a pure
+# rename -- LESSAttention's forward is byte-identical to the pre-refactor LowRankBlock.forward
+# (see attention_ops.py's LESSAttention docstring) -- so remapping the checkpoint's keys below
+# reproduces the original arm-A model exactly when loading into today's --attn_type less encoder.
+_LEGACY_ARM_A_KEY_RE = re.compile(
+    r"^(encoder\.blocks\.\d+\.)(low_dim_pool\.|channel_norm\.|spatial_norm\.|attn\.)"
+)
 
 def get_encoder(model_name, task_type=None, num_labels=None, config=None):
     # print(f"model_name: {model_name}, task_type: {task_type}, num_labels: {num_labels}")
@@ -234,13 +247,22 @@ class LESSWithTaskHead(PreTrainedModel):
             safetensors_paths = glob.glob(os.path.join(pretrained_model_dir, "*.safetensors"))
             safetensors_paths.sort()
             pretrained_model_path = safetensors_paths[-1]
+            model_state = self.state_dict()
             with safe_open(pretrained_model_path, framework="pt", device="cpu") as f:
                 for key in f.keys():
                     if key.startswith("encoder.") and key != "encoder.perception_field_mask":
                         # Get the corresponding key in target model
                         param = f.get_tensor(key)
-                        self.state_dict()[key].copy_(param)
-            
+                        target_key = key
+                        if target_key not in model_state:
+                            legacy_match = _LEGACY_ARM_A_KEY_RE.match(key)
+                            if legacy_match:
+                                target_key = (
+                                    legacy_match.group(1) + "attn." + legacy_match.group(2)
+                                    + key[legacy_match.end():]
+                                )
+                        model_state[target_key].copy_(param)
+
         else:
             self.encoder.load_pretrained_weights(pretrained_model_dir)
 
@@ -335,14 +357,28 @@ class LESSWithUPerNet(LESSWithTaskHead):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.encoder = get_encoder(config.model_name, config.task_type, config.num_labels, config)
-        
+
         if config.model_name != "spatsigma":
+            # ConvHead upsamples the encoder's patch grid back to config.image_size in
+            # log2(decoder_patch_size) doubling steps, so decoder_patch_size must be the
+            # encoder's *actual* spatial downsampling factor -- not config.patch_size, which is
+            # the generic --patch_size CLI arg (default 16) that only means "patch size" for
+            # lessvit's own HyperspectralPatchEmbed. SpecViT tokenizes at its own
+            # `token_patch_size` (default 4, see SpecViT/specvit.py) independently of that CLI
+            # arg, so using config.patch_size there upsamples 4x too far (e.g. a 128px crop's
+            # 32x32 SpecViT grid -> 512x512 instead of back to 128x128, a shape mismatch against
+            # the label mask). Read it off the constructed encoder so it can never drift out of
+            # sync with whatever tokenization SpecViT actually used.
+            if config.model_name == "specvit":
+                decoder_patch_size = self.encoder.vit_core.patch_embed.patch_size[0]
+            else:
+                decoder_patch_size = config.patch_size
             if config.use_moe:
                 # self.decoder = MoEUpperNet(config.num_labels, config.image_size, config.embed_dim, config.num_experts, config.topk)
                 self.decoder = MoEConvHead(
                     embedding_size=config.embed_dim,
                     num_classes=config.num_labels,
-                    patch_size=config.patch_size,
+                    patch_size=decoder_patch_size,
                     num_experts=config.num_experts,
                     topk=config.topk,
                 )
@@ -351,11 +387,11 @@ class LESSWithUPerNet(LESSWithTaskHead):
                 #     num_classes=config.num_labels,
                 #     image_size=config.image_size,
                 #     debug=False
-                # ) 
+                # )
                 self.decoder = ConvHead(
                     embedding_size=config.embed_dim,
                     num_classes=config.num_labels,
-                    patch_size=config.patch_size
+                    patch_size=decoder_patch_size
                 )
             self.padding = False
         else:
