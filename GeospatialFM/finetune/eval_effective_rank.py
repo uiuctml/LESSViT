@@ -47,6 +47,7 @@ Usage:
 """
 import argparse
 import csv
+import glob
 import logging
 import os
 import random
@@ -130,15 +131,15 @@ def n_bands_for_gen_task(gen_task):
     raise ValueError(f"Unknown gen_task: {gen_task}")
 
 
-def build_holdout_pool(data_dir, datasets):
-    """Union of val+test split-file entries across `datasets`. Every EnMAP dataset class reads its
-    split file into `sample_collection` preserving line order (see e.g. enmap_cdl.py's
-    read_split_file), so (dataset_name, split, local_idx) is a stable, gen_task-independent identity
-    for a physical sample -- channel subsetting happens per-gen_task inside __getitem__ on the same
-    underlying raster."""
+def build_holdout_pool(data_dir, datasets, splits=("val", "test")):
+    """Union of split-file entries (default val+test) across `datasets`. Every EnMAP dataset
+    class reads its split file into `sample_collection` preserving line order (see e.g.
+    enmap_cdl.py's read_split_file), so (dataset_name, split, local_idx) is a stable,
+    gen_task-independent identity for a physical sample -- channel subsetting happens
+    per-gen_task inside __getitem__ on the same underlying raster."""
     pool = []
     for dataset_name in datasets:
-        for split in ("val", "test"):
+        for split in splits:
             split_file = os.path.join(data_dir, "splits", dataset_name, f"{split}.txt")
             with open(split_file, "r") as f:
                 sample_ids = [line.strip() for line in f if line.strip()]
@@ -185,6 +186,37 @@ def build_arch_namespace(args, model_name):
 def build_frozen_model(model_name, arch_ns):
     config = LESSWithProjectionConfig(num_labels=2, **vars(arch_ns))
     return LESSWithProjection(config)
+
+
+def load_finetuned_encoder(model, ckpt_dir):
+    """Load just the `encoder.*` submodule out of a full downstream-task checkpoint (e.g. a
+    LESSWithUPerNet/LESSWithProjection saved by finetune.py's Trainer -- HF save_pretrained's
+    model.safetensors, keys prefixed "encoder."/"decoder." or "encoder."/"classifier."),
+    ignoring the decoder/classifier head entirely. This is deliberately generic across every
+    --model_name (unlike the frozen-checkpoint path's model.load_pretrained_encoder(), which for
+    every non-lessvit backbone dispatches to that wrapper's own load_pretrained_weights() --
+    logic written to parse each backbone's ORIGINAL released pretrained-checkpoint format, e.g.
+    dofa_wrapper.py strips a 'mask_token' key and resizes pos_embed, specvit_wrapper.py filters
+    for a 'vit.' prefix -- none of which matches a finetuned checkpoint's keys, which are exactly
+    today's model's own state_dict names since finetune.py builds/saves with the same code this
+    script imports)."""
+    from safetensors import safe_open
+
+    safetensors_paths = sorted(glob.glob(os.path.join(ckpt_dir, "*.safetensors")))
+    if not safetensors_paths:
+        raise FileNotFoundError(f"No .safetensors file found in {ckpt_dir}")
+
+    model_state = model.state_dict()
+    with safe_open(safetensors_paths[-1], framework="pt", device="cpu") as f:
+        for key in f.keys():
+            if not key.startswith("encoder.") or key == "encoder.perception_field_mask":
+                continue
+            if key not in model_state:
+                raise KeyError(
+                    f"Checkpoint key {key!r} has no matching encoder parameter -- "
+                    f"the eval --model_name/arch flags likely don't match what finetune.py used"
+                )
+            model_state[key].copy_(f.get_tensor(key))
 
 
 @torch.no_grad()
@@ -275,12 +307,12 @@ def main(args):
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
 
-    pool = build_holdout_pool(args.data_dir, args.datasets)
+    pool = build_holdout_pool(args.data_dir, args.datasets, splits=args.splits)
     if args.n_samples is not None and args.n_samples < len(pool):
         pool = random.sample(pool, args.n_samples)
     save_sample_index_file(args.sample_index_file, pool)
-    logger.info("Held-out pool: %d samples across %d datasets (saved to %s)",
-                len(pool), len(args.datasets), args.sample_index_file)
+    logger.info("Held-out pool: %d samples across %d datasets, splits=%s (saved to %s)",
+                len(pool), len(args.datasets), args.splits, args.sample_index_file)
 
     by_ds_split = defaultdict(list)
     for dataset_name, split, _sample_id, local_idx in pool:
@@ -328,7 +360,10 @@ def main(args):
                     emit(model_name, gen_task, reason="checkpoint_not_found")
                 continue
             try:
-                model.load_pretrained_encoder(ckpt_dir)
+                if args.finetuned:
+                    load_finetuned_encoder(model, ckpt_dir)
+                else:
+                    model.load_pretrained_encoder(ckpt_dir)
                 loaded = True
             except Exception as e:
                 logger.exception("Failed to load checkpoint for %s from %s", model_name, ckpt_dir)
@@ -416,13 +451,22 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Effective rank of frozen encoder representations")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the GFMBench downstream data root")
     parser.add_argument("--datasets", type=str, nargs="+", default=DEFAULT_DATASETS, choices=list(ENMAP_DATASET.keys()),
-                         help="Downstream datasets whose val+test splits are pooled into the held-out set")
+                         help="Downstream datasets whose --splits are pooled into the held-out set")
+    parser.add_argument("--splits", type=str, nargs="+", default=["val", "test"], choices=["train", "val", "test"],
+                         help="Which split(s) of --datasets to pool into the held-out set. Default val+test "
+                              "(never touched by fine-tuning); pass --splits test to eval on the test set only "
+                              "(e.g. when scoring a --finetuned checkpoint that already trained on train+val).")
     parser.add_argument("--models", type=str, nargs="+", default=DEFAULT_MODELS,
                          choices=["lessvit", "specvit", "dinov3", "dofa", "spatsigma", "channelvit", "hyperfree"])
     parser.add_argument("--gen_tasks", type=str, nargs="+", default=NATIVE_GEN_TASKS, choices=NATIVE_GEN_TASKS)
     parser.add_argument("--pretrained_model_dir", type=str, nargs="+", default=[],
                          help="MODEL=PATH pairs, e.g. lessvit=results/models/foo/checkpoint-1000. "
                               "Any model not given here falls back to <results_dir>/models/<model_name>/.")
+    parser.add_argument("--finetuned", action="store_true",
+                         help="--pretrained_model_dir points at full downstream-task checkpoints (e.g. "
+                              "finetune.py's results/models/<dataset>/<model>_<gen_task>_lr*/checkpoint-*) "
+                              "rather than frozen pretrained backbones -- loads only the encoder.* "
+                              "submodule out of each, ignoring the decoder/classifier head.")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--crop_size", type=int, default=64,
                          help="Explicit eval-time center-crop size (deterministic, is_train=False). "

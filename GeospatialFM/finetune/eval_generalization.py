@@ -3,21 +3,30 @@
 across the full generalization grid -- no retraining, one checkpoint, repeated eval passes:
 
   * native EnMAP channel-subset settings: id, ood_a, ood_full, ood_complement (4)
-  * SRF-resampled sensor configs: prisma_like, sentinel2_like (2)
-  * real alternative-sensor test sets sharing enmap_cdl's CDL label scheme: desis, eo1h (2)
+  * SRF-resampled sensor configs: prisma_like, sentinel2_like, eo1h_like, desis_like (4)
 
-desis/eo1h only apply when --dataset_name is enmap_cdl (desis_cdl/eo1_cdl are the only real
-sensor datasets with CDL labels). EO1CDLDataset/DESISCDLDataset each build their OWN raw-CDL
--code -> ordinal-index mapping from their own (different) `classes` list, e.g. EO1's ordinal
-index 6 is CDL code 41 while enmap_cdl's ordinal index 6 is CDL code 45 -- left alone, the
-labels handed to the metric wouldn't correspond to the same class as the logit channel the
-checkpoint's head produces at that index. build_eval_dataset() below overrides each real
-dataset's `.ordinal_map` with one built from enmap_cdl's OWN `classes` ordering (see
-build_ordinal_map()), so ordinal index i always means "the i-th class in the anchor dataset's
-`classes` list", matching what the checkpoint was actually fine-tuned to predict. Any CDL code
-desis/eo1h's test masks contain that enmap_cdl's `classes` doesn't recognize becomes
-ignore_index -- the checkpoint has no output for a class it was never trained on, so those
-pixels can't be scored either way.
+The SRF-resampled configs all resample the SAME enmap_cdl imagery/labels/geography (see
+sensors.py/sensors.yaml) onto each target sensor's real calibrated band centres+FWHM, isolating
+"does this checkpoint transfer across sensor spectral response" from confounds like a different
+dataset's geography or crop mix. This deliberately replaces the older approach of evaluating
+against the real desis_cdl/eo1_cdl datasets directly (still available via --gen_tasks desis eo1h,
+see REAL_SENSOR_GEN_TASKS below, but no longer a DEFAULT_GEN_TASKS member) -- those real datasets
+turned out to differ from enmap_cdl in geography and crop-type distribution (e.g. enmap_cdl has
+meaningful Sugarcane/Citrus/Prunes coverage that's ~0% in eo1_cdl), confounding sensor transfer
+with a distribution shift the SRF-simulated versions don't have.
+
+--gen_tasks desis/eo1h (opt-in, not default) only apply when --dataset_name is enmap_cdl
+(desis_cdl/eo1_cdl are the only real sensor datasets with CDL labels). EO1CDLDataset/
+DESISCDLDataset each build their OWN raw-CDL-code -> ordinal-index mapping from their own
+(different) `classes` list, e.g. EO1's ordinal index 6 is CDL code 41 while enmap_cdl's ordinal
+index 6 is CDL code 45 -- left alone, the labels handed to the metric wouldn't correspond to the
+same class as the logit channel the checkpoint's head produces at that index. build_eval_dataset()
+below overrides each real dataset's `.ordinal_map` with one built from enmap_cdl's OWN `classes`
+ordering (see build_ordinal_map()), so ordinal index i always means "the i-th class in the anchor
+dataset's `classes` list", matching what the checkpoint was actually fine-tuned to predict. Any
+CDL code desis/eo1h's test masks contain that enmap_cdl's `classes` doesn't recognize becomes
+ignore_index -- the checkpoint has no output for a class it was never trained on, so those pixels
+can't be scored either way.
 
 Writes a tidy CSV: model, dataset, gen_task, n_bands, task_type, metric_name, value, lr, reason.
 
@@ -55,13 +64,15 @@ logger = logging.getLogger(__name__)
 
 NATIVE_GEN_TASKS = ["id", "ood_a", "ood_full", "ood_complement"]
 # enmap_identity (an SRF-identity passthrough, used elsewhere purely as an id/ood_full sanity
-# check) is deliberately excluded from the default sensor list -- prisma_like/sentinel2_like are
-# the two genuine SRF-resampled sensors this pipeline reports on.
+# check) is deliberately excluded from the default sensor list -- prisma_like/sentinel2_like/
+# eo1h_like/desis_like are the four genuine SRF-resampled sensors this pipeline reports on.
 SENSOR_GEN_TASKS = [name for name in SENSOR_CONFIGS.keys() if name != "enmap_identity"]
+# Opt-in only (see module docstring for why these aren't in DEFAULT_GEN_TASKS): the real
+# desis_cdl/eo1_cdl datasets, evaluated directly instead of SRF-simulated from enmap_cdl.
 REAL_SENSOR_GEN_TASKS = {"desis": "desis_cdl", "eo1h": "eo1_cdl"}
 REAL_SENSOR_ANCHOR_DATASET = "enmap_cdl"
 
-DEFAULT_GEN_TASKS = NATIVE_GEN_TASKS + SENSOR_GEN_TASKS + list(REAL_SENSOR_GEN_TASKS.keys())
+DEFAULT_GEN_TASKS = NATIVE_GEN_TASKS + SENSOR_GEN_TASKS
 ALL_GEN_TASKS = NATIVE_GEN_TASKS + list(SENSOR_CONFIGS.keys()) + list(REAL_SENSOR_GEN_TASKS.keys())
 
 TASK_TYPE_MODEL_CLS = {

@@ -40,8 +40,9 @@ SEED=0
 # rank=1, crop_size=128 -- matching /project/geospatial/baseline_models/lessvit (run name
 # LESSVIT_b2_d8_r1, see launch_train.sh's --run_name; channel_embed_dims_per_head=2 there is
 # the "b2"). That checkpoint predates the "arms experiment" refactor (commit 8e09169), which
-# renamed arm A's ("less") internal keys -- eval_effective_rank.py's load_lessvit_encoder()
-# transparently remaps the old key layout, so --attn_type less below still loads correctly.
+# renamed arm A's ("less") internal keys -- LESSWithTaskHead.load_pretrained_encoder()
+# (downstream_models.py) transparently remaps the old key layout, so --attn_type less below
+# still loads correctly.
 EMBED_DIM=768
 DEPTH=12
 NUM_HEADS=12

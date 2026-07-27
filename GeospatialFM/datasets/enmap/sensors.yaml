@@ -27,3 +27,21 @@ sentinel2_like:
     - {name: B10, centre_nm: 1375, fwhm_nm: 30}
     - {name: B11, centre_nm: 1610, fwhm_nm: 90}
     - {name: B12, centre_nm: 2190, fwhm_nm: 180}
+
+# eo1h_like/desis_like: SRF-resample EnMAP's OWN imagery (same scenes/labels/geography as every
+# other gen_task) onto EO-1 Hyperion's/DESIS's real calibrated band centres (EO1_WV/DESIS_WV in
+# eo1h_cdl.py/desis_cdl.py -- see sensors.py's _build_eo1h_like/_build_desis_like), instead of
+# using the real eo1_cdl/desis_cdl datasets (which additionally differ in geography and CDL
+# crop-mix from enmap_cdl, confounding sensor-response transfer with regional-distribution
+# shift). This isolates "does this checkpoint transfer across sensor spectral response" the same
+# way prisma_like/sentinel2_like already do.
+eo1h_like:
+  # EO-1 Hyperion's nominal spectral sampling/resolution (~10nm), matching band spacing in
+  # EO1_WV -- Hyperion's own real (non-uniform, VNIR/SWIR-overlap) band centres are used
+  # directly rather than a synthetic arange.
+  fwhm_nm: 10.0
+
+desis_like:
+  # DESIS's nominal spectral sampling/resolution (~2.55nm), matching the exact spacing of
+  # DESIS_WV's real calibrated band centres.
+  fwhm_nm: 2.55

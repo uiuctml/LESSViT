@@ -88,6 +88,25 @@ def _build_sentinel2_like(s2_bands):
     return _drop_unbuildable_bands("sentinel2_like", lam_tgt, fwhm_tgt, band_names=names)
 
 
+def _build_eo1h_like(cfg):
+    # Deferred import: eo1h_cdl.py isn't otherwise a dependency of sensors.py, and importing it
+    # eagerly at module level would risk a circular import via enmap/__init__.py's own import
+    # order (enmap_cdl.py, which imports sensors.py, is imported before eo1h_cdl.py there).
+    # Safe here because _build_registry() only runs lazily, on first actual SENSOR_CONFIGS access
+    # (see _LazySensorRegistry) -- by then every enmap dataset module is already imported.
+    from .eo1h_cdl import EO1_WV
+    lam_tgt = [float(w) for w in EO1_WV]
+    fwhm_tgt = [float(cfg["fwhm_nm"])] * len(lam_tgt)
+    return _drop_unbuildable_bands("eo1h_like", lam_tgt, fwhm_tgt)
+
+
+def _build_desis_like(cfg):
+    from .desis_cdl import DESIS_WV
+    lam_tgt = [float(w) for w in DESIS_WV]
+    fwhm_tgt = [float(cfg["fwhm_nm"])] * len(lam_tgt)
+    return _drop_unbuildable_bands("desis_like", lam_tgt, fwhm_tgt)
+
+
 def _build_registry():
     with open(_SENSORS_YAML, "r") as f:
         raw = yaml.safe_load(f)
@@ -112,6 +131,20 @@ def _build_registry():
         "name": "sentinel2_like",
         "lam_tgt": s2_lam_tgt,
         "fwhm_tgt": s2_fwhm_tgt,
+    }
+
+    eo1h_lam_tgt, eo1h_fwhm_tgt = _build_eo1h_like(raw["eo1h_like"])
+    registry["eo1h_like"] = {
+        "name": "eo1h_like",
+        "lam_tgt": eo1h_lam_tgt,
+        "fwhm_tgt": eo1h_fwhm_tgt,
+    }
+
+    desis_lam_tgt, desis_fwhm_tgt = _build_desis_like(raw["desis_like"])
+    registry["desis_like"] = {
+        "name": "desis_like",
+        "lam_tgt": desis_lam_tgt,
+        "fwhm_tgt": desis_fwhm_tgt,
     }
 
     return registry
