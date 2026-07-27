@@ -31,12 +31,21 @@ RANK=1
 ATTN_TYPE=less
 INIT_VALUES=1.0
 
-DATASET_NAME=enmap_cdl
-TASK_TYPE=segmentation
+# Datasets to fine-tune + sweep, each paired with its task_type -- the same 5 README downstream
+# EnMAP benchmarks eval_cross_sensor.py/eval_quad_split.py/launch_finetune_ablation_base.sh
+# already default to. Trim this list to iterate faster while testing.
+DATASETS=(
+    "enmap_cdl:segmentation"
+    "enmap_corine:multilabel"
+    "enmap_eurocrops:segmentation"
+    "enmap_bdforet:segmentation"
+    "enmap_bnetd:segmentation"
+)
+
 GEN_TASK=id
 DATA_DIR=/datasets/geospatial/
-# Only needed to compute SRF std stats for the prisma_like/sentinel2_like generalization
-# eval below (cached under SRF_CACHE_DIR afterward); irrelevant to training itself.
+# Only needed to compute SRF std stats for the prisma_like/sentinel2_like/eo1h_like/desis_like
+# generalization eval below (cached under SRF_CACHE_DIR afterward); irrelevant to training itself.
 PRETRAIN_DATA_DIR=/datasets/geospatial/enmap/enmap
 
 # No EnMAP-family dataset's metadata carries a "size" key, so finetune.py's
@@ -54,67 +63,79 @@ CROP_SIZE=128
 # LEARNING_RATES=(8e-5 1e-4 3e-4 5e-4 8e-4)
 LEARNING_RATES=(5e-4)
 
-# finetune.py never overrides Trainer.evaluate()'s default metric_key_prefix, so both
-# val_results.json and test_results.json end up with "eval_"-prefixed keys regardless of
-# split -- not "val_"/"test_"-prefixed as the filenames might suggest.
-case ${TASK_TYPE} in
-    classification) METRIC_KEY=eval_accuracy ;;
-    multilabel) METRIC_KEY=eval_micro_f1 ;;
-    segmentation) METRIC_KEY=eval_IoU ;;
-    *) echo "Unknown TASK_TYPE ${TASK_TYPE}"; exit 1 ;;
-esac
+# Generalization-eval knobs, shared across datasets (see eval_generalization.py).
+SRF_CACHE_DIR=./results/srf_stats
+GENERALIZATION_CSV=./results/generalization_eval.csv
+N_PATCHES=2000
+EVAL_BATCH_SIZE=32
 
-for LR in "${LEARNING_RATES[@]}"; do
-    RUN_NAME=${MODEL_NAME}_${GEN_TASK}_lr${LR}
+for DATASET_SPEC in "${DATASETS[@]}"; do
+    DATASET_NAME="${DATASET_SPEC%%:*}"
+    TASK_TYPE="${DATASET_SPEC##*:}"
 
-    python3 GeospatialFM/finetune/finetune.py \
-        --dataset_name ${DATASET_NAME} \
-        --task_type ${TASK_TYPE} \
-        --data_dir ${DATA_DIR} \
-        --gen_task ${GEN_TASK} \
-        --model_name ${MODEL_NAME} \
-        --pretrained_model_path ${PRETRAINED_MODEL_PATH} \
-        --run_name ${RUN_NAME} \
-        --output_dir ./results/models \
-        --logging_dir ./results/logs \
-        --wandb_dir ./results/ \
-        --report_to wandb \
-        --crop_size ${CROP_SIZE} \
-        --embed_dim ${EMBED_DIM} \
-        --depth ${DEPTH} \
-        --num_heads ${NUM_HEADS} \
-        --channel_embed_dims_per_head ${CHANNEL_EMBED_DIMS_PER_HEAD} \
-        --rank ${RANK} \
-        --attn_type ${ATTN_TYPE} \
-        --init_values ${INIT_VALUES} \
-        --use_rope_embed \
-        --return_dict \
-        --per_device_train_batch_size 8 \
-        --gradient_accumulation_steps 32 \
-        --per_device_eval_batch_size 128 \
-        --num_train_epochs 10 \
-        --learning_rate ${LR} \
-        --adam_beta1 0.9 \
-        --adam_beta2 0.999 \
-        --weight_decay 0.01 \
-        --max_grad_norm 1.0 \
-        --warmup_ratio 0.05 \
-        --lr_scheduler_type cosine \
-        --random_rotation \
-        --save_strategy epoch \
-        --eval_strategy epoch \
-        --save_total_limit 5 \
-        --seed 42 \
-        --mixed_precision bf16 \
-        --dataloader_num_workers 16 \
-        --dataloader_pin_memory
-done
+    # finetune.py never overrides Trainer.evaluate()'s default metric_key_prefix, so both
+    # val_results.json and test_results.json end up with "eval_"-prefixed keys regardless of
+    # split -- not "val_"/"test_"-prefixed as the filenames might suggest.
+    case ${TASK_TYPE} in
+        classification) METRIC_KEY=eval_accuracy ;;
+        multilabel) METRIC_KEY=eval_micro_f1 ;;
+        segmentation) METRIC_KEY=eval_IoU ;;
+        *) echo "Unknown TASK_TYPE ${TASK_TYPE}"; exit 1 ;;
+    esac
 
-# Pick the LR with the best validation metric (written by finetune.py to each run's
-# val_results.json) and report the corresponding test_results.json, matching the paper's
-# search-on-val / report-on-test protocol.
-DATASET_NAME=${DATASET_NAME} MODEL_NAME=${MODEL_NAME} GEN_TASK=${GEN_TASK} METRIC_KEY=${METRIC_KEY} \
-LEARNING_RATES="${LEARNING_RATES[*]}" python3 - <<'PY'
+    echo "=== ${DATASET_NAME} (${TASK_TYPE}) ==="
+
+    for LR in "${LEARNING_RATES[@]}"; do
+        RUN_NAME=${MODEL_NAME}_${GEN_TASK}_lr${LR}
+
+        python3 GeospatialFM/finetune/finetune.py \
+            --dataset_name ${DATASET_NAME} \
+            --task_type ${TASK_TYPE} \
+            --data_dir ${DATA_DIR} \
+            --gen_task ${GEN_TASK} \
+            --model_name ${MODEL_NAME} \
+            --pretrained_model_path ${PRETRAINED_MODEL_PATH} \
+            --run_name ${RUN_NAME} \
+            --output_dir ./results/models \
+            --logging_dir ./results/logs \
+            --wandb_dir ./results/ \
+            --report_to wandb \
+            --crop_size ${CROP_SIZE} \
+            --embed_dim ${EMBED_DIM} \
+            --depth ${DEPTH} \
+            --num_heads ${NUM_HEADS} \
+            --channel_embed_dims_per_head ${CHANNEL_EMBED_DIMS_PER_HEAD} \
+            --rank ${RANK} \
+            --attn_type ${ATTN_TYPE} \
+            --init_values ${INIT_VALUES} \
+            --use_rope_embed \
+            --return_dict \
+            --per_device_train_batch_size 8 \
+            --gradient_accumulation_steps 32 \
+            --per_device_eval_batch_size 128 \
+            --num_train_epochs 10 \
+            --learning_rate ${LR} \
+            --adam_beta1 0.9 \
+            --adam_beta2 0.999 \
+            --weight_decay 0.01 \
+            --max_grad_norm 1.0 \
+            --warmup_ratio 0.05 \
+            --lr_scheduler_type cosine \
+            --random_rotation \
+            --save_strategy epoch \
+            --eval_strategy epoch \
+            --save_total_limit 5 \
+            --seed 42 \
+            --mixed_precision bf16 \
+            --dataloader_num_workers 16 \
+            --dataloader_pin_memory
+    done
+
+    # Pick the LR with the best validation metric (written by finetune.py to each run's
+    # val_results.json) and report the corresponding test_results.json, matching the paper's
+    # search-on-val / report-on-test protocol.
+    DATASET_NAME=${DATASET_NAME} MODEL_NAME=${MODEL_NAME} GEN_TASK=${GEN_TASK} METRIC_KEY=${METRIC_KEY} \
+    LEARNING_RATES="${LEARNING_RATES[*]}" python3 - <<'PY'
 import json
 import os
 
@@ -141,27 +162,24 @@ with open(test_path) as f:
     print(json.dumps(json.load(f), indent=2))
 PY
 
-# Take that same best-on-val checkpoint and report it across the full generalization grid --
-# no retraining, one eval pass per gen_task: native id/ood_a/ood_full/ood_complement (4),
-# SRF-resampled prisma_like/sentinel2_like (2), and (only when DATASET_NAME=enmap_cdl) the real
-# desis/eo1h alternative-sensor test sets (2). See eval_generalization.py's module docstring for
-# the desis/eo1h class-ordinal caveat. The first sensor-config run computes SRF std stats from
-# PRETRAIN_DATA_DIR (slow, one-time); later runs reuse SRF_CACHE_DIR.
-SRF_CACHE_DIR=./results/srf_stats
-GENERALIZATION_CSV=./results/generalization_eval.csv
-N_PATCHES=2000
-EVAL_BATCH_SIZE=32
-
-python3 GeospatialFM/finetune/eval_generalization.py \
-    --data_dir ${DATA_DIR} \
-    --pretrain_data_dir ${PRETRAIN_DATA_DIR} \
-    --results_dir ./results \
-    --srf_cache_dir ${SRF_CACHE_DIR} \
-    --output_csv ${GENERALIZATION_CSV} \
-    --model_name ${MODEL_NAME} \
-    --dataset_name ${DATASET_NAME} \
-    --task_type ${TASK_TYPE} \
-    --gen_task_train ${GEN_TASK} \
-    --crop_size ${CROP_SIZE} \
-    --n_patches ${N_PATCHES} \
-    --batch_size ${EVAL_BATCH_SIZE}
+    # Take that same best-on-val checkpoint and report it across the full generalization grid --
+    # no retraining, one eval pass per gen_task: native id/ood_a/ood_full/ood_complement (4) and
+    # SRF-resampled prisma_like/sentinel2_like/eo1h_like/desis_like (4). The real desis_cdl/
+    # eo1_cdl datasets are opt-in only now (--gen_tasks desis eo1h), not part of the default set
+    # -- see eval_generalization.py's module docstring for why. The first sensor-config run per
+    # dataset computes SRF std stats from PRETRAIN_DATA_DIR (slow, one-time); later runs reuse
+    # SRF_CACHE_DIR.
+    python3 GeospatialFM/finetune/eval_generalization.py \
+        --data_dir ${DATA_DIR} \
+        --pretrain_data_dir ${PRETRAIN_DATA_DIR} \
+        --results_dir ./results \
+        --srf_cache_dir ${SRF_CACHE_DIR} \
+        --output_csv ${GENERALIZATION_CSV} \
+        --model_name ${MODEL_NAME} \
+        --dataset_name ${DATASET_NAME} \
+        --task_type ${TASK_TYPE} \
+        --gen_task_train ${GEN_TASK} \
+        --crop_size ${CROP_SIZE} \
+        --n_patches ${N_PATCHES} \
+        --batch_size ${EVAL_BATCH_SIZE}
+done
