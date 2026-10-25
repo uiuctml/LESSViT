@@ -106,6 +106,32 @@ checkpoint, use `LESSWithProjection.from_pretrained(path)` or
 original argument namespace with `GeospatialFM.models.loading.get_task_model`.
 Checkpoint architecture settings must match. Pretrained weights are not bundled.
 
+## Validate an existing LESSViT checkpoint
+
+```bash
+PYTHONPATH=. python examples/check_lessvit_checkpoint.py \
+  --checkpoint-dir /path/to/LESSVIT_b2_d8_r1 \
+  --config /path/to/LESSVIT_b2_d8_r1/checkpoint-90909/config.json
+```
+
+This loads the original pretraining architecture, attaches a new 14-class task
+head, and verifies classification, multilabel classification, and segmentation.
+Use `--task classification` (or `multilabel` / `segmentation`) to select one.
+It compares every encoder parameter against the checkpoint, including legacy
+key remapping, then checks finite outputs and task-head gradients on synthetic
+10-band 32×32 inputs. Encoder weights remain frozen during this gradient check;
+it does not measure task accuracy or test full encoder fine-tuning.
+
+The supplied `LESSVIT_b2_d8_r1` checkpoint passed all three tasks on CPU:
+541 encoder parameters loaded, 543 tensors verified exactly, and 408 legacy
+keys remapped. Output shapes were `[1, 14]`, `[1, 14]`, and `[1, 14, 32, 32]`.
+Its architecture is `embed_dim=768`, encoder `depth=12`, `num_heads=12`,
+`patch_size=16`, `channel_embed_dims_per_head=2`, `rank=1`, with RoPE and
+LayerScale (`init_values=1.0`). The name's `d8` refers to decoder depth.
+The root weight directory has no config; pass the config from `checkpoint-90909`
+explicitly. Do not substitute the generic constructor defaults.
+The downstream heads are newly initialized and require task-specific training.
+
 ## Dataset construction and loading
 
 All original dataset implementations, metadata, split handling, transforms,

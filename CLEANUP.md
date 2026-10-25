@@ -62,3 +62,14 @@ formats and dataset directory layouts still apply.
 Results: all four smoke tests passed. Wheel build succeeded; packaged CLI help,
 sensor YAML inclusion, and DOFA JSON-to-model construction were checked outside
 the repository. `git diff --check` passed.
+
+## Follow-up: actual LESSViT checkpoint verification
+
+The user-supplied `LESSVIT_b2_d8_r1/model.safetensors` was subsequently verified
+using `checkpoint-90909/config.json`. All 541 encoder parameters and 543 total
+encoder tensors matched exactly after loading (408 legacy-key remappings).
+Classification, multilabel classification, and segmentation passed synthetic
+forward and task-head backward checks. The encoder was frozen; no original
+checkpoint file was changed. `examples/check_lessvit_checkpoint.py` preserves
+the runnable check. Real-data accuracy and full encoder fine-tuning remain
+unverified; the earlier external-baseline validation limitation still applies.
