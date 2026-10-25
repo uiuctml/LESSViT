@@ -84,6 +84,7 @@ class LESSViTEncoderConfig(PretrainedConfig):
         task_type: str = None,
         attn_type: str = "less",
         fusion_init_scale: float = 1.0,
+        rank: int = 1,
         **kwargs
     ):
         # Older checkpoints saved only the derived dimensions. Recover the original constructor
@@ -105,6 +106,7 @@ class LESSViTEncoderConfig(PretrainedConfig):
         assert attn_type in ("less", "full", "additive"), f"Unknown attn_type: {attn_type!r}"
         self.attn_type = attn_type
         self.fusion_init_scale = fusion_init_scale
+        self.rank = rank
         self.patch_size = patch_size
         self.embed_dim = embed_dim
         self.channel_embed_dims_per_head = channel_embed_dims_per_head

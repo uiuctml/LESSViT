@@ -9,7 +9,6 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import xformers.ops as xops
 
 from ..utils import named_apply, named_replace
 
@@ -26,6 +25,9 @@ class LinearW24(torch.nn.Linear):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if not self.sparsity_enabled:
             return super().forward(input)
+
+        # Optional GPU backend is needed only when sparse execution is enabled.
+        import xformers.ops as xops
 
         input_shape = input.shape
         input = input.flatten(end_dim=-2)

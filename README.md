@@ -18,71 +18,147 @@ Yuqing Wang,
 [Minh Do](https://minhdo.ece.illinois.edu/),
 [Han Zhao](https://hanzhaoml.github.io/).
 
-## Overview
+## Release scope
 
-<div align="center">
-<img src="./assets/less_vit.png" alt="LESSViT Architecture" width="500"/>
-</div>
+`main` contains configuration generation, all model implementations and checkpoint
+loaders, and dataset construction/loading. The complete research workspace,
+including training/evaluation launchers, sweeps, notebooks, figures, and project
+website, is preserved on `dev` at `0c611f6`. To run the original end-to-end
+training/evaluation workflows, use `dev`. This minimal branch does not include a
+training runner or claim to reproduce published scores by itself.
 
-Modeling hyperspectral imagery (HSI) across different sensors presents a fundamental challenge due to variations in wavelength coverage, band sampling, and channel dimensionality. We introduce **LESSViT** (**L**ow-rank **E**fficient **S**patial–**S**pectral **Vi**sion **T**ransformer), a sensor-flexible architecture for cross-spectral generalization.
+## Installation
 
-Our contributions are:
+Use Python 3.11 in a fresh environment:
 
-1. **LESS Attention** — a structured low-rank factorization of spatial–spectral attention that reduces complexity from O(N²C²) to O(rNC), where N is the number of spatial tokens, C is the number of spectral channels, and r is the approximation rank.
-2. **LESSViT** — a channel-agnostic ViT with wavelength-aware positional encoding (SSRoPE) that enables consistent modeling under varying spectral configurations.
-3. **HyperMAE** — a hyperspectral masked autoencoder pre-training strategy with decoupled spatial–spectral masking and hierarchical channel sampling for scalable and robust learning.
-
-## Pre-training
-
-We pre-train LESSViT using **HyperMAE** on the [SpectralEarth](https://github.com/blumenstiel/SpectralEarth) benchmark (EnMAP hyperspectral data) for 200 epochs.
-
-To launch pre-training, run:
-```shell
-bash launch_train.sh
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-See [`GeospatialFM/scripts/args.py`](GeospatialFM/scripts/args.py) for full argument descriptions.
+`requirements.txt` records the reference dependency versions. Install PyTorch and
+Torchvision wheels appropriate for your hardware. Hugging Face Hub is pinned
+below 1.0 for Transformers 4.53.3; GFMBench requires `datasets<4` because its
+loaders use dataset scripts. DINOv3's optional 2:4 sparse execution additionally
+requires a compatible GPU installation of `xformers`; ordinary model loading
+does not use it. Preserve upstream license notices in the bundled baseline code.
 
-## Evaluation: Cross-Spectral Generalization
+## Configuration generation
 
-We evaluate LESSViT under a cross-spectral generalization setting on the SpectralEarth benchmark. Models are pre-trained and fine-tuned on a fixed channel configuration (C120_VNIR+) and evaluated across four spectral settings:
+Commands run from the repository root, or anywhere after installation:
 
-| Setting | Description |
-|---|---|
-| `id` | In-distribution (C120_VNIR+) |
-| `ood_a` | Spectral shift (C120_SWIR+) |
-| `ood_complement` | Unseen wavelengths (C82, disjoint from training) |
-| `ood_full` | Channel expansion (C202, all channels) |
-
-Downstream datasets: `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
-
-To launch fine-tuning on a SpectralEarth dataset, run:
-```shell
-bash launch_finetune.sh
-```
-which wraps:
-```shell
-python3 GeospatialFM/finetune/finetune.py \
-    --dataset_name ${DATASET_NAME} \
-    --task_type ${TASK_TYPE} \
-    --data_dir ${DATA_DIR} \
-    --gen_task ${GEN_TASK} \
-    --model_name ${MODEL_NAME} \
-    --pretrained_model_path ${PRETRAINED_MODEL_PATH} \
-    --run_name ${RUN_NAME} \
-    --output_dir ${OUTPUT_DIR}
+```bash
+python -m GeospatialFM.configs --help
+python -m GeospatialFM.configs model --name lessvit --output configs/lessvit.json
+python -m GeospatialFM.configs sensor --name sentinel2_like --output configs/sentinel2.json
+python -m GeospatialFM.configs pretrain --output configs/pretrain.json -- \
+  --dataset_name enmap --data_dir /path/to/SpectralEarth --run_name example
+python -m GeospatialFM.configs finetune --output configs/finetune.json -- \
+  --dataset_name enmap_cdl --task_type segmentation \
+  --data_dir /path/to/datasets --run_name example
 ```
 
-- `--dataset_name`: One of `enmap_cdl`, `enmap_corine`, `enmap_eurocrops`, `enmap_bdforet`, `enmap_bnetd`.
-- `--gen_task`: One of `id`, `ood_a`, `ood_complement`, `ood_full`.
-- `--model_name`: The backbone to fine-tune. `lessvit` (this work) or one of the supported baselines: `dofa`, `dinov3`, `specvit`, `spatsigma`, `channelvit`, `hyperfree` ([HyperFree](https://github.com/Jingtao-Li-CVer/HyperFree)).
-- `--pretrained_model_path`: **A directory**, not a file — this convention is the same for every backbone. Each encoder's `load_pretrained_weights` globs for its own checkpoint file(s) inside the directory it's given (see `GeospatialFM/models/wrappers/`). By convention, checkpoints for a given backbone live under `results/models/<model_name>/`, the same tree that pre-training and fine-tuning runs save their own checkpoints to.
+Model configurations use the original constructor defaults, not a claim of
+paper-specific hyperparameters. Supply `--overrides overrides.json` for model
+constructor values. The pretrain/finetune modes preserve the original argument
+schemas and accept their options after `--` (including `--help`). Existing output
+files are never overwritten. Sensor wavelengths and FWHMs are in nanometers;
+`sensors.yaml`, `sensors.py`, and `data_process/srf.py` retain the original sensor
+construction and resampling algorithms.
 
-See [`GeospatialFM/finetune/args.py`](GeospatialFM/finetune/args.py) for full argument descriptions, and [`GeospatialFM/models/registry.py`](GeospatialFM/models/registry.py) for the full set of supported baseline encoders.
+## Models and checkpoint loading
 
-## Model Weights
+All seven registered families are retained: `lessvit`, `specvit`, `dinov3`,
+`dofa`, `spatsigma`, `channelvit`, and `hyperfree`. SpatSigma has classification
+and segmentation encoders. SatMAE, LESSViT MAE, SpecViT MAE, downstream heads,
+and their supporting modules are also retained.
 
-Pre-trained model checkpoints will be released soon. Stay tuned!
+```python
+from GeospatialFM.models.registry import ENCODER_CONFIGS, ENCODER_MODELS
+
+config = ENCODER_CONFIGS["channelvit"].from_json_file("configs/channelvit.json")
+encoder = ENCODER_MODELS["channelvit"](config)
+encoder.load_pretrained_weights("/path/to/channelvit/checkpoint_directory")
+```
+
+Generate `configs/channelvit.json` with the model command above first. Baseline
+weight loaders accept a **directory** containing the original model's checkpoint
+format; see `GeospatialFM/models/wrappers/` for filename and key conventions.
+SpatSigma expects both `spat*.pth` and `spec*.pth`. Inputs and wavelength handling
+are model-specific; consult each wrapper's `forward_encoder` signature.
+
+For a downstream LESSViT model:
+
+```python
+from GeospatialFM.models.downstream_models import LESSWithProjection, LESSWithProjectionConfig
+
+config = LESSWithProjectionConfig(num_labels=14, model_name="lessvit", task_type="classification")
+model = LESSWithProjection(config)
+model.load_pretrained_encoder("/path/to/lessvit/checkpoint_directory")
+```
+
+LESSViT's pretrained encoder loader reads `*.safetensors` containing `encoder.*`
+keys and retains the legacy checkpoint key remapping. For a complete downstream
+checkpoint, use `LESSWithProjection.from_pretrained(path)` or
+`LESSWithUPerNet.from_pretrained(path)`. Construct downstream models from the
+original argument namespace with `GeospatialFM.models.loading.get_task_model`.
+Checkpoint architecture settings must match. Pretrained weights are not bundled.
+
+## Dataset construction and loading
+
+All original dataset implementations, metadata, split handling, transforms,
+collators, quadrant tiling, and SRF statistics code are retained.
+
+```python
+from functools import partial
+from torch.utils.data import DataLoader
+from GeospatialFM.datasets.enmap import SpectralEarthDataset
+from GeospatialFM.data_process import unimodal_collate_fn
+
+# root/<patch_id>/*.tif; each source GeoTIFF has 202 channels.
+dataset = SpectralEarthDataset("/path/to/SpectralEarth", subset=120)
+loader = DataLoader(dataset, batch_size=2, collate_fn=partial(unimodal_collate_fn, modal="optical"))
+batch = next(iter(loader))
+```
+
+This example loads raw values. Use `pretrain_transform` with matching subset
+statistics and `get_enmap_transform` for normalization and downstream transforms.
+The EnMAP downstream registry includes CDL, CORINE, EuroCrops, BD Foret, BNETD,
+TreeMap, NLCD, DESIS-CDL, and EO-1-CDL:
+
+```python
+from types import SimpleNamespace
+from GeospatialFM.datasets.enmap import get_enmap_downstream_dataset
+
+args = SimpleNamespace(dataset_name="enmap_cdl", data_dir="/path/to/datasets")
+splits = get_enmap_downstream_dataset(args, train_transform=None, eval_transform=None, gen_task="id")
+sample = splits["test"][0]
+```
+
+For CDL, use `root/enmap_cdl/enmap/<sample>.tif`,
+`root/enmap_cdl/cdl/<sample>.tif`, and
+`root/splits/enmap_cdl/{train,val,test}.txt` listing relative sample filenames.
+Other datasets retain their own layouts documented in their constructors.
+`id`, `ood_a`, `ood_complement`, and `ood_full` retain the original spectral
+selection semantics. SRF tasks additionally require the matching resampling
+transform and target statistics; setting `gen_task` alone does not apply SRF
+resampling. SSL4EO is available through `GeospatialFM.datasets.ssl4eo`;
+GFMBench through `GeospatialFM.datasets.GFMBench.utils` (requires external data
+access and execution of the upstream dataset scripts).
+
+Datasets and checkpoints are not bundled. The previous machine-specific
+`results` symlink has been removed; its external target was not modified.
+
+## Validation
+
+`tests/test_core.py` checks module imports, all registered model and sensor
+configuration exports, original argument export, SRF normalization, a small
+LESSViT checkpoint round trip, and synthetic GeoTIFF loading/collation at all
+four supported pretraining channel counts. These are offline CPU checks, not
+full training runs or validation of external pretrained baseline weights.
+See [CLEANUP.md](CLEANUP.md) for the preservation and cleanup record.
 
 ## Citation
 

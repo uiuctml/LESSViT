@@ -8,7 +8,7 @@ class DOFAConfig(PretrainedConfig):
     model_type = "dofa"
 
     def __init__(self, img_size=128, patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, num_classes=768,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6), global_pool=False, **kwargs):
+        norm_layer="layer_norm", global_pool=False, **kwargs):
         super().__init__(**kwargs)
         self.img_size = img_size
         self.patch_size = patch_size
@@ -31,7 +31,8 @@ class DOFAEncoder(OFAViT):
             depth=config.depth,
             num_heads=config.num_heads,
             mlp_ratio=config.mlp_ratio,
-            norm_layer=config.norm_layer,
+            norm_layer=(partial(nn.LayerNorm, eps=1e-6)
+                        if config.norm_layer == "layer_norm" else config.norm_layer),
             global_pool=config.global_pool,
             num_classes=config.num_classes,
         )

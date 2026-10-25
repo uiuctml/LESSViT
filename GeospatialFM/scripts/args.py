@@ -1,7 +1,7 @@
 import argparse
 import os
 
-def parse_args():
+def parse_args(sys_args=None):
     parser = argparse.ArgumentParser(description="GeospatialFM Training Arguments")
 
     # Dataset arguments
@@ -96,7 +96,7 @@ def parse_args():
     parser.add_argument("--modal_mode", type=str, default=None, choices=["multi", "optical", "radar", None, "random"], help="Mode of the model, if None, the model is trained in three modes simultaneously")
     
     # Append run name to directories
-    args = parser.parse_args()
+    args = parser.parse_args(sys_args)
     args.output_dir = os.path.join(args.output_dir, args.run_name)
     args.logging_dir = os.path.join(args.logging_dir, args.run_name)
     return args
