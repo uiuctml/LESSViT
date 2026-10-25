@@ -19,15 +19,6 @@ Yuqing Wang,
 [Minh Do](https://minhdo.ece.illinois.edu/),
 [Han Zhao](https://hanzhaoml.github.io/).
 
-## Release scope
-
-`main` contains configuration generation, all model implementations and checkpoint
-loaders, and dataset construction/loading. The complete research workspace,
-including training/evaluation launchers, sweeps, notebooks, figures, and project
-website, is preserved on `dev` at `0c611f6`. To run the original end-to-end
-training/evaluation workflows, use `dev`. This minimal branch does not include a
-training runner or claim to reproduce published scores by itself.
-
 ## Installation
 
 Use Python 3.11 in a fresh environment:
