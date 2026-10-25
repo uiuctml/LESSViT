@@ -32,14 +32,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 ROOT_DIR="/home/haozhesi/LESSViT"
 export PYTHONPATH="${PYTHONPATH:-}:$ROOT_DIR"
 export TORCH_NCCL_BLOCKING_WAIT=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 RUN_NAME=LESSVIT_S_ablation_arm_c_specvit
 
 SPECVIT_ARGS=(
     --model_name specvit
     --dataset_name enmap
-    --data_dir /datasets/disk2/geospatial/enmap/enmap
+    --data_dir /datasets/geospatial/enmap/enmap
     --enmap_subset 120
     --per_device_train_batch_size 256
     --gradient_accumulation_steps 1
@@ -53,7 +53,7 @@ SPECVIT_ARGS=(
     --save_total_limit 5
     --seed 42
     --mixed_precision bf16
-    --dataloader_num_workers 16
+    --dataloader_num_workers 8
     --dataloader_pin_memory
     --output_dir ./results/models
     --logging_dir ./results/logs

@@ -4,8 +4,8 @@ export CUDA_VISIBLE_DEVICES=0
 
 # Effective rank of *finetuned* encoders (as opposed to launch_eval_effective_rank.sh's frozen
 # pretrained backbones): loads each backbone's results/models/enmap_cdl/<model>_id_lr*/
-# checkpoint saved by launch_finetune_sweep.sh, keeping only the encoder.* submodule and
-# discarding the segmentation decoder -- see eval_effective_rank.py's load_finetuned_encoder().
+# checkpoint saved by launch_finetune_sweep.sh, keeping only the .encoder submodule and
+# discarding the segmentation decoder -- see eval_effective_rank.py's load_finetuned_model().
 DATA_DIR=/datasets/geospatial
 
 # Only the 4 backbones with a completed enmap_cdl finetune under results/models/enmap_cdl/ as of
@@ -34,11 +34,19 @@ SAMPLE_INDEX_FILE=./results/effective_rank_finetuned_sample_indices.txt
 # MODEL=PATH pairs (space-separated): each backbone's best (highest-val) enmap_cdl checkpoint.
 PRETRAINED_MODEL_DIR="lessvit=results/models/enmap_cdl/lessvit_id_lr5e-4/checkpoint-50 dofa=results/models/enmap_cdl/dofa_id_lr5e-4/checkpoint-50 specvit=results/models/enmap_cdl/specvit_id_lr5e-4/checkpoint-50 hyperfree=results/models/enmap_cdl/hyperfree_id_lr5e-4/checkpoint-50"
 
-# Load only encoder.* out of each full downstream (encoder+decoder) checkpoint above, instead
-# of routing through each wrapper's load_pretrained_weights() (written for each backbone's
-# ORIGINAL released pretrained-checkpoint format, not a finetuned one) -- see
-# eval_effective_rank.py's load_finetuned_encoder() docstring.
+# Reconstruct each checkpoint via HF's from_pretrained() (architecture read from its own saved
+# config.json), instead of routing through each wrapper's load_pretrained_weights() (written for
+# each backbone's ORIGINAL released pretrained-checkpoint format, not a finetuned one) or this
+# script's own --embed_dim/--depth/... flags (which describe a FROZEN checkpoint's architecture,
+# not necessarily whatever finetune.py actually trained here) -- see
+# eval_effective_rank.py's load_finetuned_model() docstring. This is why no LESSViT
+# architecture flags (--embed_dim etc., see launch_eval_effective_rank.sh) are needed below: they
+# would be silently ignored for --finetuned anyway.
 FINETUNED=true
+
+# Must match finetune.py's --task_type for these checkpoints (segmentation, per
+# launch_finetune_sweep.sh's TASK_TYPE) -- selects LESSWithUPerNet vs LESSWithProjection.
+TASK_TYPE=segmentation
 
 # Held-out set / eval knobs. Leave N_SAMPLES empty ("") to use the full test split
 # (240 samples for enmap_cdl).
@@ -46,17 +54,6 @@ CROP_SIZE=128
 BATCH_SIZE=32
 N_SAMPLES=""
 SEED=0
-
-# LESSViT architecture -- MUST match launch_finetune_sweep.sh's overrides for MODEL_NAME=lessvit
-# (same ViT-B/rank=1/crop=128 checkpoint as launch_eval_effective_rank.sh; see that script's
-# identical note).
-EMBED_DIM=768
-DEPTH=12
-NUM_HEADS=12
-CHANNEL_EMBED_DIMS_PER_HEAD=2
-RANK=1
-ATTN_TYPE=less
-INIT_VALUES=1.0
 
 python3 GeospatialFM/finetune/eval_effective_rank.py \
     --data_dir ${DATA_DIR} \
@@ -69,15 +66,8 @@ python3 GeospatialFM/finetune/eval_effective_rank.py \
     ${SPLITS:+--splits ${SPLITS}} \
     ${PRETRAINED_MODEL_DIR:+--pretrained_model_dir ${PRETRAINED_MODEL_DIR}} \
     ${FINETUNED:+--finetuned} \
+    --task_type ${TASK_TYPE} \
     --crop_size ${CROP_SIZE} \
     --batch_size ${BATCH_SIZE} \
     ${N_SAMPLES:+--n_samples ${N_SAMPLES}} \
-    --seed ${SEED} \
-    --embed_dim ${EMBED_DIM} \
-    --depth ${DEPTH} \
-    --num_heads ${NUM_HEADS} \
-    --channel_embed_dims_per_head ${CHANNEL_EMBED_DIMS_PER_HEAD} \
-    --rank ${RANK} \
-    --attn_type ${ATTN_TYPE} \
-    --init_values ${INIT_VALUES} \
-    --use_rope_embed
+    --seed ${SEED}

@@ -197,15 +197,7 @@ class SpecViTMAE(PreTrainedModel):
             num_classes=0,
         )
 
-        self.patch_embed = self.encoder.vit_core.patch_embed
-        self.cls_token = self.encoder.vit_core.cls_token
-        self.pos_embed = self.encoder.vit_core.pos_embed
-        self.pos_drop = self.encoder.vit_core.pos_drop
-        self.patch_drop = self.encoder.vit_core.patch_drop
-        self.norm_pre = self.encoder.vit_core.norm_pre
-        self.blocks = self.encoder.vit_core.blocks
-        self.norm = self.encoder.vit_core.norm
-        self.num_patches = self.patch_embed.num_patches
+        self.num_patches = self.encoder.vit_core.patch_embed.num_patches
 
         self.decoder = SpecViTMAEDecoder(config, num_patches=self.num_patches)
         self.initialize_weights()
@@ -264,22 +256,22 @@ class SpecViTMAE(PreTrainedModel):
     def forward_encoder(self, optical: torch.Tensor, mask_ratio: float, channel_mask_ratio: float):
         optical, channel_mask = self.random_channel_masking(optical, channel_mask_ratio)
         x = self.encoder.spectral_adapter(optical)
-        x = self.patch_embed(x)
+        x = self.encoder.vit_core.patch_embed(x)
         x = self.encoder.vit_core._pos_embed(x)
-        x = self.patch_drop(x)
-        x = self.norm_pre(x)
+        x = self.encoder.vit_core.patch_drop(x)
+        x = self.encoder.vit_core.norm_pre(x)
 
         x, pos_mask, ids_restore = self.random_masking(x[:, 1:, :], mask_ratio)
         cls_token = x.new_zeros(optical.shape[0], 1, self.config.embed_dim)
-        cls_token[:] = self.cls_token + self.pos_embed[:, :1, :]
+        cls_token[:] = self.encoder.vit_core.cls_token + self.encoder.vit_core.pos_embed[:, :1, :]
         x = torch.cat([cls_token.expand(optical.shape[0], -1, -1), x], dim=1)
-        x = self.pos_drop(x)
+        x = self.encoder.vit_core.pos_drop(x)
 
         hidden_states = []
-        for block in self.blocks:
+        for block in self.encoder.vit_core.blocks:
             x = block(x)
             hidden_states.append(x.detach().cpu())
-        x = self.norm(x)
+        x = self.encoder.vit_core.norm(x)
         return x, channel_mask, pos_mask, ids_restore, hidden_states
 
     def forward(

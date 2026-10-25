@@ -15,11 +15,18 @@ channel subsetting differs per gen_task (each EnMAP dataset class does this subs
 underlying raster inside __getitem__, so pooling by (dataset_name, split, local_idx) is sufficient to
 guarantee sample identity across configs). The pool is written to --sample_index_file for reproducibility.
 
-Centering: features are column-centered (subtract the per-dimension mean across the M held-out samples)
-before every metric. No per-dimension standardization is applied. All three measures are then computed
-from ONE shared SVD of the centered feature matrix: RankMe uses the singular values sigma directly;
-participation ratio and stable rank use sigma^2 (proportional to the covariance eigenvalues, which is
-scale-invariant for PR and exact for stable rank regardless of the M-1 vs M normalization convention).
+Centering and standardization: features are column-centered (subtract the per-dimension mean across
+the M held-out samples) before every metric. Each of the three measures is then reported in TWO forms:
+the plain (centered-only) SVD, and a "_std" variant computed after also dividing each dimension by its
+std (a per-dimension z-score) prior to the SVD. The centered-only form is what the raw column names
+(rankme, PR, stable_rank) mean throughout this module; it is exactly what's bounded/comparable via /D
+as described below, but it can be dominated by a single dimension whose raw scale dwarfs the rest (a
+"massive activation" outlier channel -- observed empirically for dofa; see effective_rank_metrics'
+docstring), which collapses the measure even when the other D-1 dimensions vary richly with the input.
+The "_std" variant neutralizes that specific failure mode. Within each SVD, RankMe uses the singular
+values sigma directly; participation ratio and stable rank use sigma^2 (proportional to the covariance
+eigenvalues, which is scale-invariant for PR and exact for stable rank regardless of the M-1 vs M
+normalization convention).
 
 Cross-model comparability: raw effective rank is bounded by the embedding dim D, which differs across
 models/checkpoints (LESSViT's D is whatever --embed_dim was set to for the loaded checkpoint, not
@@ -47,7 +54,7 @@ Usage:
 """
 import argparse
 import csv
-import glob
+import json
 import logging
 import os
 import random
@@ -62,7 +69,7 @@ from GeospatialFM.data_process.collate_func import modal_specific_collate_fn
 from GeospatialFM.data_process.transforms import get_enmap_transform
 from GeospatialFM.datasets.enmap.enmap import SELECTED_CHANNEL_IDX_A, SELECTED_CHANNEL_IDX_B
 from GeospatialFM.datasets.enmap.utils import ENMAP_DATASET
-from GeospatialFM.models.downstream_models import LESSWithProjection, LESSWithProjectionConfig
+from GeospatialFM.models.downstream_models import LESSWithProjection, LESSWithProjectionConfig, LESSWithUPerNet
 from GeospatialFM.models.spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -97,6 +104,15 @@ NO_PRE_HEAD_MODELS = {
 DEFAULT_MODELS = ["lessvit", "dofa", "specvit", "channelvit", "hyperfree", "spatsigma"]
 DEFAULT_DATASETS = ["enmap_cdl", "enmap_corine", "enmap_eurocrops", "enmap_bdforet", "enmap_bnetd"]
 
+# --finetuned mode's downstream model class per --task_type -- matches eval_generalization.py's
+# identical TASK_TYPE_MODEL_CLS (that script's from_pretrained() call is the reference for how a
+# finetune.py checkpoint is meant to be reloaded).
+TASK_TYPE_MODEL_CLS = {
+    "segmentation": LESSWithUPerNet,
+    "classification": LESSWithProjection,
+    "multilabel": LESSWithProjection,
+}
+
 DATASET_TASK_TYPE = {
     "enmap_cdl": "segmentation",
     "enmap_corine": "multilabel",
@@ -115,6 +131,7 @@ ARCH_FIELDS = [
 CSV_FIELDS = [
     "model", "config", "gen_task", "D", "n_samples",
     "rankme", "rankme_norm", "PR", "PR_norm", "stable_rank", "stable_rank_norm",
+    "rankme_std", "rankme_std_norm", "PR_std", "PR_std_norm", "stable_rank_std", "stable_rank_std_norm",
     "reason",
 ]
 
@@ -188,35 +205,36 @@ def build_frozen_model(model_name, arch_ns):
     return LESSWithProjection(config)
 
 
-def load_finetuned_encoder(model, ckpt_dir):
-    """Load just the `encoder.*` submodule out of a full downstream-task checkpoint (e.g. a
-    LESSWithUPerNet/LESSWithProjection saved by finetune.py's Trainer -- HF save_pretrained's
-    model.safetensors, keys prefixed "encoder."/"decoder." or "encoder."/"classifier."),
-    ignoring the decoder/classifier head entirely. This is deliberately generic across every
-    --model_name (unlike the frozen-checkpoint path's model.load_pretrained_encoder(), which for
-    every non-lessvit backbone dispatches to that wrapper's own load_pretrained_weights() --
-    logic written to parse each backbone's ORIGINAL released pretrained-checkpoint format, e.g.
-    dofa_wrapper.py strips a 'mask_token' key and resizes pos_embed, specvit_wrapper.py filters
-    for a 'vit.' prefix -- none of which matches a finetuned checkpoint's keys, which are exactly
-    today's model's own state_dict names since finetune.py builds/saves with the same code this
-    script imports)."""
-    from safetensors import safe_open
+def load_finetuned_model(task_type, ckpt_dir):
+    """Reconstruct a full downstream-task checkpoint (e.g. a LESSWithUPerNet saved by
+    finetune.py's Trainer) via HF's from_pretrained(), which rebuilds the architecture from the
+    checkpoint's own saved config.json rather than from this script's --embed_dim/--depth/...
+    CLI flags. Deliberately NOT built from this script's CLI arch flags + a manual encoder.*
+    key-copy (an earlier version of this function did that): those flags describe whatever
+    checkpoint --pretrained_model_dir points a FROZEN backbone at, and finetune.py may have
+    finetuned a *different* architecture variant (e.g. a ViT-S/rank=4 lessvit run instead of the
+    ViT-B/rank=1 one) at the same results/models/<dataset>/<model>_.../checkpoint-N path --
+    from_pretrained sidesteps that mismatch entirely by always reading the true saved config.
+    Returns the full model (encoder still frozen/eval-only); callers use `.encoder`, discarding
+    the decoder/classifier head.
 
-    safetensors_paths = sorted(glob.glob(os.path.join(ckpt_dir, "*.safetensors")))
-    if not safetensors_paths:
-        raise FileNotFoundError(f"No .safetensors file found in {ckpt_dir}")
+    num_labels must be passed explicitly: LESSWithUPerNetConfig/LESSWithProjectionConfig's
+    __init__ signature declares `num_labels=2` as a plain instance attribute, which shadows
+    PretrainedConfig's own num_labels *property* (whose setter derives id2label/label2id) --
+    so reloading via from_pretrained() with no override reconstructs the config with num_labels
+    stuck at that hardcoded default of 2, silently clobbering the id2label the checkpoint was
+    actually saved with (num_labels itself is never a literal key in config.json -- only the
+    derived id2label/label2id are) and producing a decoder sized for 2 classes regardless of how
+    many the checkpoint was really finetuned on. Read the true count directly out of the saved
+    id2label instead of assuming which --dataset_name's num_classes applies (mirrors
+    eval_generalization.py's identical from_pretrained(ckpt_dir, num_labels=num_classes) call,
+    just sourced from the checkpoint itself rather than from a --dataset_name lookup)."""
+    with open(os.path.join(ckpt_dir, "config.json")) as f:
+        saved_config = json.load(f)
+    num_labels = len(saved_config["id2label"])
 
-    model_state = model.state_dict()
-    with safe_open(safetensors_paths[-1], framework="pt", device="cpu") as f:
-        for key in f.keys():
-            if not key.startswith("encoder.") or key == "encoder.perception_field_mask":
-                continue
-            if key not in model_state:
-                raise KeyError(
-                    f"Checkpoint key {key!r} has no matching encoder parameter -- "
-                    f"the eval --model_name/arch flags likely don't match what finetune.py used"
-                )
-            model_state[key].copy_(f.get_tensor(key))
+    model_cls = TASK_TYPE_MODEL_CLS[task_type]
+    return model_cls.from_pretrained(ckpt_dir, num_labels=num_labels)
 
 
 @torch.no_grad()
@@ -278,12 +296,7 @@ def extract_feature_matrix(model, args, by_ds_split, gen_task, device, model_nam
     return X.double().numpy()
 
 
-def effective_rank_metrics(X):
-    """X: [M, D] float64, NOT yet centered. Returns RankMe/PR/stable-rank (raw + /D) from one shared
-    SVD of the column-centered matrix -- see module docstring for the centering/normalization choice."""
-    Xc = X - X.mean(axis=0, keepdims=True)
-    S = np.linalg.svd(Xc, full_matrices=False, compute_uv=False)
-
+def _rank_metrics_from_singular_values(S, D, suffix=""):
     eps = 1e-12
     p = (S + eps) / (S.sum() + eps * len(S))
     H = -(p * np.log(p)).sum()
@@ -294,12 +307,41 @@ def effective_rank_metrics(X):
     pr = (lam_sum ** 2) / float((lam ** 2).sum())
     stable_rank = lam_sum / float(lam.max())
 
-    D = X.shape[1]
     return {
-        "rankme": rankme, "rankme_norm": rankme / D,
-        "PR": pr, "PR_norm": pr / D,
-        "stable_rank": stable_rank, "stable_rank_norm": stable_rank / D,
+        f"rankme{suffix}": rankme, f"rankme{suffix}_norm": rankme / D,
+        f"PR{suffix}": pr, f"PR{suffix}_norm": pr / D,
+        f"stable_rank{suffix}": stable_rank, f"stable_rank{suffix}_norm": stable_rank / D,
     }
+
+
+def effective_rank_metrics(X):
+    """X: [M, D] float64, NOT yet centered. Returns RankMe/PR/stable-rank (raw + /D), each computed
+    two ways -- see module docstring for the centering/standardization choice and why both are
+    reported:
+      - unsuffixed: from the SVD of the column-CENTERED matrix only (subtract per-dim mean).
+        Sensitive to any dimension whose raw scale dwarfs the others (e.g. a "massive activation"
+        outlier channel -- see e.g. Sun et al. 2024, Darcet et al. 2023) -- such a channel dominates
+        the top singular direction regardless of whether it carries any input-dependent signal,
+        collapsing this measure even if the other D-1 dimensions vary richly with the input.
+      - "_std" suffix: from the SVD of the column-STANDARDIZED matrix (centered, then divided by
+        per-dim std, i.e. a per-dimension z-score) -- this neutralizes exactly that failure mode,
+        at the cost of also inflating any near-constant (low-variance, possibly noise-dominated)
+        dimension to unit scale. Prefer this pair when a model's unsuffixed numbers look
+        suspiciously collapsed relative to its peers; report both, since the "right" choice depends
+        on whether a checkpoint's outlier channels are believed to carry real signal.
+    """
+    D = X.shape[1]
+    Xc = X - X.mean(axis=0, keepdims=True)
+    S = np.linalg.svd(Xc, full_matrices=False, compute_uv=False)
+    metrics = _rank_metrics_from_singular_values(S, D)
+
+    std = Xc.std(axis=0, keepdims=True)
+    std = np.where(std < 1e-12, 1.0, std)  # guard constant dims (0/0 -> leave un-rescaled, already ~0)
+    Xstd = Xc / std
+    S_std = np.linalg.svd(Xstd, full_matrices=False, compute_uv=False)
+    metrics.update(_rank_metrics_from_singular_values(S_std, D, suffix="_std"))
+
+    return metrics
 
 
 def main(args):
@@ -329,7 +371,8 @@ def main(args):
             "model": model_name, "config": GEN_TASK_TO_PAPER_NAME[gen_task], "gen_task": gen_task,
             "D": D, "n_samples": n_samples, "reason": reason,
         }
-        for k in ("rankme", "rankme_norm", "PR", "PR_norm", "stable_rank", "stable_rank_norm"):
+        for k in ("rankme", "rankme_norm", "PR", "PR_norm", "stable_rank", "stable_rank_norm",
+                  "rankme_std", "rankme_std_norm", "PR_std", "PR_std_norm", "stable_rank_std", "stable_rank_std_norm"):
             row[k] = metrics.get(k)
         writer.writerow(row)
         csv_file.flush()
@@ -343,17 +386,15 @@ def main(args):
                 emit(model_name, gen_task, reason=NO_PRE_HEAD_MODELS[model_name])
             continue
 
-        if model_name == "channelvit":
+        if model_name == "channelvit" and not args.finetuned:
             logger.warning(
                 "channelvit: load_pretrained_weights() is a no-op in this repo -- the encoder will "
                 "run with RANDOM weights, not a trained checkpoint. Rows below are tagged 'random_init'."
             )
 
         ckpt_dir = resolve_checkpoint_dir(model_name, args)
-        arch_ns = build_arch_namespace(args, model_name)
-        model = build_frozen_model(model_name, arch_ns).to(device)
 
-        loaded = model_name == "channelvit"  # its loader is a no-op regardless of ckpt_dir
+        loaded = model_name == "channelvit" and not args.finetuned  # frozen channelvit's loader is a no-op regardless of ckpt_dir
         if not loaded:
             if ckpt_dir is None or not os.path.isdir(ckpt_dir):
                 for gen_task in args.gen_tasks:
@@ -361,8 +402,13 @@ def main(args):
                 continue
             try:
                 if args.finetuned:
-                    load_finetuned_encoder(model, ckpt_dir)
+                    # Builds AND loads in one call -- see load_finetuned_model()'s docstring for
+                    # why this reads the architecture from the checkpoint's own config.json
+                    # rather than this script's --embed_dim/--depth/... CLI flags.
+                    model = load_finetuned_model(args.task_type, ckpt_dir).to(device)
                 else:
+                    arch_ns = build_arch_namespace(args, model_name)
+                    model = build_frozen_model(model_name, arch_ns).to(device)
                     model.load_pretrained_encoder(ckpt_dir)
                 loaded = True
             except Exception as e:
@@ -370,6 +416,9 @@ def main(args):
                 for gen_task in args.gen_tasks:
                     emit(model_name, gen_task, reason=f"checkpoint_load_failed: {e}")
                 continue
+        else:
+            arch_ns = build_arch_namespace(args, model_name)
+            model = build_frozen_model(model_name, arch_ns).to(device)
         model.eval()
 
         for gen_task in args.gen_tasks:
@@ -400,8 +449,12 @@ def main(args):
 
 def print_markdown_table(rows):
     print("\n" + "=" * 100)
-    print("RankMe/D is the primary cross-model comparison column (raw numbers are NOT comparable")
-    print("across models with different D -- see module docstring).")
+    print("RankMe/D (centered only) is the primary cross-model comparison column; RankMe_std/D adds")
+    print("per-dimension standardization before the SVD, which is robust to a single \"massive")
+    print("activation\" outlier channel dominating the centered-only measure (see module docstring's")
+    print("effective_rank_metrics note) -- compare the two when a model's RankMe/D looks suspiciously")
+    print("collapsed relative to its peers. Raw (non-/D) numbers are NOT comparable across models")
+    print("with different D.")
     print("=" * 100)
     by_config = defaultdict(list)
     for r in rows:
@@ -411,7 +464,7 @@ def print_markdown_table(rows):
         if config not in by_config:
             continue
         print(f"\n### {config} (gen_task={gen_task})\n")
-        print("| model | D | n | RankMe/D | RankMe | PR/D | PR | stable_rank/D | stable_rank |")
+        print("| model | D | n | RankMe/D | RankMe_std/D | PR/D | PR_std/D | stable_rank/D | stable_rank_std/D |")
         print("|---|---|---|---|---|---|---|---|---|")
         for r in by_config[config]:
             if r["rankme"] is None:
@@ -419,8 +472,8 @@ def print_markdown_table(rows):
             else:
                 print(
                     f"| {r['model']} | {r['D']} | {r['n_samples']} | {r['rankme_norm']:.4f} | "
-                    f"{r['rankme']:.2f} | {r['PR_norm']:.4f} | {r['PR']:.2f} | "
-                    f"{r['stable_rank_norm']:.4f} | {r['stable_rank']:.2f} |"
+                    f"{r['rankme_std_norm']:.4f} | {r['PR_norm']:.4f} | {r['PR_std_norm']:.4f} | "
+                    f"{r['stable_rank_norm']:.4f} | {r['stable_rank_std_norm']:.4f} |"
                 )
 
 
@@ -465,8 +518,12 @@ def parse_args():
     parser.add_argument("--finetuned", action="store_true",
                          help="--pretrained_model_dir points at full downstream-task checkpoints (e.g. "
                               "finetune.py's results/models/<dataset>/<model>_<gen_task>_lr*/checkpoint-*) "
-                              "rather than frozen pretrained backbones -- loads only the encoder.* "
-                              "submodule out of each, ignoring the decoder/classifier head.")
+                              "rather than frozen pretrained backbones -- reconstructs each one via "
+                              "from_pretrained() (architecture read from its own config.json) and uses "
+                              "only its .encoder, discarding the decoder/classifier head.")
+    parser.add_argument("--task_type", type=str, default="segmentation", choices=list(TASK_TYPE_MODEL_CLS.keys()),
+                         help="Only used with --finetuned: which downstream model class to reconstruct "
+                              "(must match what finetune.py's --task_type was for these checkpoints).")
     parser.add_argument("--results_dir", type=str, default="results")
     parser.add_argument("--crop_size", type=int, default=64,
                          help="Explicit eval-time center-crop size (deterministic, is_train=False). "

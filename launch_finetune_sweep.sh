@@ -12,22 +12,40 @@ MODEL_NAME=lessvit
 
 # Directory containing the pretrained checkpoint(s) for $MODEL_NAME. See launch_finetune.sh
 # for the full explanation of this convention.
-# PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit/LESSVIT_S_b4_d4_r4
-PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit
+PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit/LESSVIT_S_b4_d4_r2
+# PRETRAINED_MODEL_PATH=/project/geospatial/baseline_models/lessvit
+
+# Disambiguates concurrent copies of this script that fine-tune the SAME dataset+gen_task+LR
+# combo from a DIFFERENT PRETRAINED_MODEL_PATH/architecture (e.g. comparing rank=2 vs rank=4
+# checkpoints side by side) -- RUN_NAME below is otherwise identical between them, so without
+# this both copies write to the exact same results/models/<dataset>/<run_name>/ directory and
+# race each other's checkpoint saves (this happened: two concurrent runs, one pointed at
+# LESSVIT_S_b4_d4_r2 and one at LESSVIT_S_b4_d4_r4, both silently clobbered
+# results/models/enmap_corine/lessvit_id_lr8e-4/ before anyone noticed). Leave empty for a
+# single, non-concurrent sweep -- run names stay exactly as before. Set e.g. RUN_TAG=r2 (to
+# match this file's current RANK) when running this alongside another copy configured
+# differently.
+RUN_TAG="r2"
 
 # LESSViT architecture -- only meaningful when MODEL_NAME=lessvit (get_encoder() ignores these
 # for every other backbone), but MUST match whatever checkpoint PRETRAINED_MODEL_PATH points
 # lessvit at, or finetune.py's initial model_init() either KeyErrors (missing key, e.g. ls1.gamma
 # when INIT_VALUES is unset) or RuntimeErrors on a shape mismatch (e.g. channel_branch.qk sized
-# from the wrong CHANNEL_EMBED_DIMS_PER_HEAD) while loading the pretrained encoder. Defaults
-# below are ViT-B/rank=1/crop=128, matching /project/geospatial/baseline_models/lessvit (run
-# name LESSVIT_b2_d8_r1 -- see launch_train.sh's --run_name; channel_embed_dims_per_head=2
-# there is the "b2" -- and launch_eval_effective_rank.sh's identical note).
-EMBED_DIM=768
+# from the wrong CHANNEL_EMBED_DIMS_PER_HEAD/RANK) while loading the pretrained encoder. Values
+# below are verified directly from LESSVIT_S_b4_d4_r4/model.safetensors's actual tensor shapes
+# (not just its directory name), via:
+#   encoder.norm.weight: (384,) -> embed_dim=384
+#   max encoder.blocks.N.* index -> depth=12
+#   encoder.blocks.0.attn.channel_norm.weight: (24,) -> channel_dim=24 -> /num_heads(6)=4 per head
+#   encoder.blocks.0.attn.attn.channel_branch.qk.weight: (192, 24) -> rows = channel_dim*rank*2
+#     -> rank = 192/(24*2) = 4
+# (192 vs the previously-configured rank=2/channel_embed_dims_per_head=2's expected 48 is exactly
+# the RuntimeError this used to throw: "size of tensor a (48) must match tensor b (192)".)
+EMBED_DIM=384
 DEPTH=12
-NUM_HEADS=12
-CHANNEL_EMBED_DIMS_PER_HEAD=2
-RANK=1
+NUM_HEADS=6
+CHANNEL_EMBED_DIMS_PER_HEAD=4
+RANK=2
 ATTN_TYPE=less
 INIT_VALUES=1.0
 
@@ -35,11 +53,11 @@ INIT_VALUES=1.0
 # EnMAP benchmarks eval_cross_sensor.py/eval_quad_split.py/launch_finetune_ablation_base.sh
 # already default to. Trim this list to iterate faster while testing.
 DATASETS=(
-    "enmap_cdl:segmentation"
+    # "enmap_cdl:segmentation"
+    # "enmap_eurocrops:segmentation"
+    # "enmap_bdforet:segmentation"
+    # "enmap_bnetd:segmentation"
     "enmap_corine:multilabel"
-    "enmap_eurocrops:segmentation"
-    "enmap_bdforet:segmentation"
-    "enmap_bnetd:segmentation"
 )
 
 GEN_TASK=id
@@ -60,8 +78,7 @@ CROP_SIZE=128
 # learning rates", selected on the validation set. This is a plain grid search, run one full
 # fine-tune per candidate LR -- not the same thing as the --use_optuna path in finetune.py,
 # which does a TPE search over a different (wider) candidate set instead of this exact grid.
-# LEARNING_RATES=(8e-5 1e-4 3e-4 5e-4 8e-4)
-LEARNING_RATES=(5e-4)
+LEARNING_RATES=(1e-4 5e-4 8e-4)
 
 # Generalization-eval knobs, shared across datasets (see eval_generalization.py).
 SRF_CACHE_DIR=./results/srf_stats
@@ -86,7 +103,7 @@ for DATASET_SPEC in "${DATASETS[@]}"; do
     echo "=== ${DATASET_NAME} (${TASK_TYPE}) ==="
 
     for LR in "${LEARNING_RATES[@]}"; do
-        RUN_NAME=${MODEL_NAME}_${GEN_TASK}_lr${LR}
+        RUN_NAME=${MODEL_NAME}_${GEN_TASK}_lr${LR}${RUN_TAG:+_${RUN_TAG}}
 
         python3 GeospatialFM/finetune/finetune.py \
             --dataset_name ${DATASET_NAME} \
@@ -110,8 +127,8 @@ for DATASET_SPEC in "${DATASETS[@]}"; do
             --init_values ${INIT_VALUES} \
             --use_rope_embed \
             --return_dict \
-            --per_device_train_batch_size 8 \
-            --gradient_accumulation_steps 32 \
+            --per_device_train_batch_size 16 \
+            --gradient_accumulation_steps 16 \
             --per_device_eval_batch_size 128 \
             --num_train_epochs 10 \
             --learning_rate ${LR} \
@@ -135,7 +152,7 @@ for DATASET_SPEC in "${DATASETS[@]}"; do
     # val_results.json) and report the corresponding test_results.json, matching the paper's
     # search-on-val / report-on-test protocol.
     DATASET_NAME=${DATASET_NAME} MODEL_NAME=${MODEL_NAME} GEN_TASK=${GEN_TASK} METRIC_KEY=${METRIC_KEY} \
-    LEARNING_RATES="${LEARNING_RATES[*]}" python3 - <<'PY'
+    RUN_TAG=${RUN_TAG} LEARNING_RATES="${LEARNING_RATES[*]}" python3 - <<'PY'
 import json
 import os
 
@@ -143,12 +160,15 @@ dataset_name = os.environ["DATASET_NAME"]
 model_name = os.environ["MODEL_NAME"]
 gen_task = os.environ["GEN_TASK"]
 metric_key = os.environ["METRIC_KEY"]
+run_tag = os.environ.get("RUN_TAG", "")
 lrs = os.environ["LEARNING_RATES"].split()
+
+def run_name_for(lr):
+    return f"{model_name}_{gen_task}_lr{lr}" + (f"_{run_tag}" if run_tag else "")
 
 best_lr, best_score = None, float("-inf")
 for lr in lrs:
-    run_name = f"{model_name}_{gen_task}_lr{lr}"
-    val_path = os.path.join("results", "models", dataset_name, run_name, "val_results.json")
+    val_path = os.path.join("results", "models", dataset_name, run_name_for(lr), "val_results.json")
     with open(val_path) as f:
         score = json.load(f)[metric_key]
     print(f"lr={lr} {metric_key}={score:.4f}")
@@ -156,7 +176,7 @@ for lr in lrs:
         best_lr, best_score = lr, score
 
 print(f"\nBest learning rate: {best_lr} ({metric_key}={best_score:.4f})")
-test_path = os.path.join("results", "models", dataset_name, f"{model_name}_{gen_task}_lr{best_lr}", "test_results.json")
+test_path = os.path.join("results", "models", dataset_name, run_name_for(best_lr), "test_results.json")
 with open(test_path) as f:
     print(f"Test-set results ({test_path}):")
     print(json.dumps(json.load(f), indent=2))
